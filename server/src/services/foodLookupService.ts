@@ -54,7 +54,7 @@ export async function acceptFoodLookup(userId: string, lookupId: string, mealId?
         protein: n(food.protein),
         carbs: n(food.carbs),
         fat: n(food.fat)
-      });
+      }, tx);
     }
     return food;
   });

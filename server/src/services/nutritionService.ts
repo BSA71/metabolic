@@ -44,8 +44,8 @@ export async function markMealEatenAsPlanned(userId: string, mealId: string) {
   });
 }
 
-export async function addMealItem(userId: string, mealId: string, data: Record<string, unknown>) {
-  return prisma.$transaction(async (tx) => {
+export async function addMealItem(userId: string, mealId: string, data: Record<string, unknown>, txClient?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) {
+  const execute = async (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => {
     const meal = await tx.meal.findFirstOrThrow({ where: { id: mealId, userId } });
     const item = await tx.mealItem.create({
       data: {
@@ -64,7 +64,9 @@ export async function addMealItem(userId: string, mealId: string, data: Record<s
     await recalculateMealTotals(mealId, tx);
     await recalculateDailyLogTotals(meal.dailyLogId, tx);
     return item;
-  });
+  };
+  if (txClient) return execute(txClient);
+  return prisma.$transaction(execute);
 }
 
 export async function updateMealItem(userId: string, itemId: string, data: Record<string, unknown>) {
