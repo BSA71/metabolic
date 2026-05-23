@@ -1,0 +1,399 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  COACH
+  USER
+  VIEWER
+}
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+enum ProgramStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+enum MetricType {
+  WEIGHT
+  BODY_FAT
+  WAIST
+  LEAN_TISSUE_MASS
+  FAT_MASS
+  CALORIES
+  PROTEIN
+  CARBS
+  FAT
+}
+enum MealStatus {
+  PLANNED
+  UPCOMING
+  EATEN_AS_PLANNED
+  MODIFIED
+  SKIPPED
+  MISSED
+  UNPLANNED
+}
+enum MealItemType {
+  PLANNED
+  ACTUAL
+}
+enum FoodSource {
+  MANUAL
+  AI
+  IMPORTED
+  VERIFIED
+}
+enum Visibility {
+  GLOBAL
+  USER
+}
+enum ExerciseStatus {
+  PLANNED
+  DONE
+  SKIPPED
+  MISSED
+}
+enum Difficulty {
+  EASY
+  NORMAL
+  HARD
+}
+enum SmsDirection {
+  INBOUND
+  OUTBOUND
+}
+enum SmsStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
+model User {
+  id String @id @default(cuid())
+  firebaseUid String @unique
+  email String @unique
+  firstName String
+  lastName String
+  phone String?
+  role Role @default(USER)
+  status UserStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organizations UserOrganization[]
+  coachedPrograms Program[] @relation("ProgramCoach")
+  programs Program[] @relation("ProgramUser")
+  dailyLogs DailyLog[]
+  meals Meal[]
+  mealItemsCreated Food[] @relation("FoodCreator")
+  ownedFoods Food[] @relation("FoodOwner")
+  scheduledExercises ScheduledExercise[]
+  exerciseLogs ExerciseLog[]
+  aiFoodLookups AiFoodLookup[]
+  smsMessages SmsMessage[]
+  coachAssignments CoachAssignment[] @relation("CoachAssignments")
+  userAssignments CoachAssignment[] @relation("UserAssignments")
+  mealTemplates MealTemplate[]
+}
+
+model Organization {
+  id String @id @default(cuid())
+  name String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users UserOrganization[]
+  programs Program[]
+}
+
+model UserOrganization {
+  id String @id @default(cuid())
+  userId String
+  organizationId String
+  role Role @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([userId, organizationId])
+}
+
+model CoachAssignment {
+  id String @id @default(cuid())
+  coachId String
+  userId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  coach User @relation("CoachAssignments", fields: [coachId], references: [id], onDelete: Cascade)
+  user User @relation("UserAssignments", fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([coachId, userId])
+}
+
+model Program {
+  id String @id @default(cuid())
+  userId String
+  organizationId String?
+  coachId String?
+  name String
+  status ProgramStatus @default(DRAFT)
+  startDate DateTime
+  targetEndDate DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation("ProgramUser", fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  coach User? @relation("ProgramCoach", fields: [coachId], references: [id])
+  metrics ProgramMetric[]
+  dailyLogs DailyLog[]
+  scheduledExercises ScheduledExercise[]
+}
+
+model ProgramMetric {
+  id String @id @default(cuid())
+  programId String
+  metricType MetricType
+  startValue Decimal @db.Decimal(10, 2)
+  currentValue Decimal @db.Decimal(10, 2)
+  goalValue Decimal @db.Decimal(10, 2)
+  unit String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  @@unique([programId, metricType])
+}
+
+model DailyLog {
+  id String @id @default(cuid())
+  programId String
+  userId String
+  date DateTime
+  weight Decimal? @db.Decimal(10, 2)
+  bodyFat Decimal? @db.Decimal(10, 2)
+  waist Decimal? @db.Decimal(10, 2)
+  calorieTarget Decimal @db.Decimal(10, 2)
+  proteinTarget Decimal @db.Decimal(10, 2)
+  carbTarget Decimal @db.Decimal(10, 2)
+  fatTarget Decimal @db.Decimal(10, 2)
+  caloriesActual Decimal @default(0) @db.Decimal(10, 2)
+  proteinActual Decimal @default(0) @db.Decimal(10, 2)
+  carbsActual Decimal @default(0) @db.Decimal(10, 2)
+  fatActual Decimal @default(0) @db.Decimal(10, 2)
+  mealsPlanned Int @default(0)
+  mealsCompleted Int @default(0)
+  exercisesPlanned Int @default(0)
+  exercisesCompleted Int @default(0)
+  complianceScore Decimal? @db.Decimal(5, 2)
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meals Meal[]
+  @@unique([userId, date])
+}
+
+model Meal {
+  id String @id @default(cuid())
+  dailyLogId String
+  userId String
+  mealNumber Int
+  name String
+  plannedTime String?
+  status MealStatus @default(PLANNED)
+  plannedCalories Decimal @default(0) @db.Decimal(10, 2)
+  plannedProtein Decimal @default(0) @db.Decimal(10, 2)
+  plannedCarbs Decimal @default(0) @db.Decimal(10, 2)
+  plannedFat Decimal @default(0) @db.Decimal(10, 2)
+  actualCalories Decimal @default(0) @db.Decimal(10, 2)
+  actualProtein Decimal @default(0) @db.Decimal(10, 2)
+  actualCarbs Decimal @default(0) @db.Decimal(10, 2)
+  actualFat Decimal @default(0) @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  dailyLog DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items MealItem[]
+}
+
+model MealItem {
+  id String @id @default(cuid())
+  mealId String
+  foodId String?
+  type MealItemType
+  nameSnapshot String
+  quantity Decimal @db.Decimal(10, 2)
+  unit String
+  calories Decimal @db.Decimal(10, 2)
+  protein Decimal @db.Decimal(10, 2)
+  carbs Decimal @db.Decimal(10, 2)
+  fat Decimal @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food Food? @relation(fields: [foodId], references: [id])
+}
+
+model Food {
+  id String @id @default(cuid())
+  name String
+  brand String?
+  servingSize Decimal @db.Decimal(10, 2)
+  servingUnit String
+  calories Decimal @db.Decimal(10, 2)
+  protein Decimal @db.Decimal(10, 2)
+  carbs Decimal @db.Decimal(10, 2)
+  fat Decimal @db.Decimal(10, 2)
+  fiber Decimal? @db.Decimal(10, 2)
+  sugar Decimal? @db.Decimal(10, 2)
+  sodium Decimal? @db.Decimal(10, 2)
+  source FoodSource @default(MANUAL)
+  visibility Visibility @default(USER)
+  ownerUserId String?
+  aiGenerated Boolean @default(false)
+  verified Boolean @default(false)
+  createdById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ownerUser User? @relation("FoodOwner", fields: [ownerUserId], references: [id])
+  createdBy User? @relation("FoodCreator", fields: [createdById], references: [id])
+  aliases FoodAlias[]
+  mealItems MealItem[]
+  lookups AiFoodLookup[]
+}
+
+model FoodAlias {
+  id String @id @default(cuid())
+  foodId String
+  alias String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  @@unique([foodId, alias])
+}
+
+model Exercise {
+  id String @id @default(cuid())
+  name String
+  category String?
+  description String?
+  defaultSets Int?
+  defaultReps Int?
+  defaultDurationMinutes Int?
+  defaultDistance Decimal? @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  scheduledExercises ScheduledExercise[]
+}
+
+model ScheduledExercise {
+  id String @id @default(cuid())
+  programId String
+  userId String
+  exerciseId String
+  scheduledDate DateTime
+  sets Int?
+  reps Int?
+  durationMinutes Int?
+  distance Decimal? @db.Decimal(10, 2)
+  weight Decimal? @db.Decimal(10, 2)
+  status ExerciseStatus @default(PLANNED)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+  log ExerciseLog?
+}
+
+model ExerciseLog {
+  id String @id @default(cuid())
+  scheduledExerciseId String @unique
+  userId String
+  completed Boolean @default(false)
+  completedAt DateTime?
+  actualSets Int?
+  actualReps Int?
+  actualDurationMinutes Int?
+  actualDistance Decimal? @db.Decimal(10, 2)
+  actualWeight Decimal? @db.Decimal(10, 2)
+  difficulty Difficulty?
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  scheduledExercise ScheduledExercise @relation(fields: [scheduledExerciseId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AiFoodLookup {
+  id String @id @default(cuid())
+  userId String
+  inputText String
+  normalizedFoodName String
+  calories Decimal @db.Decimal(10, 2)
+  protein Decimal @db.Decimal(10, 2)
+  carbs Decimal @db.Decimal(10, 2)
+  fat Decimal @db.Decimal(10, 2)
+  confidence Decimal? @db.Decimal(5, 2)
+  accepted Boolean @default(false)
+  foodId String?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food Food? @relation(fields: [foodId], references: [id])
+}
+
+model SmsMessage {
+  id String @id @default(cuid())
+  userId String?
+  phone String
+  direction SmsDirection
+  message String
+  intent String?
+  response String?
+  status SmsStatus @default(RECEIVED)
+  createdAt DateTime @default(now())
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model ProgramTemplate {
+  id String @id @default(cuid())
+  name String
+  description String?
+  defaultCalories Decimal @db.Decimal(10, 2)
+  defaultProtein Decimal @db.Decimal(10, 2)
+  defaultCarbs Decimal @db.Decimal(10, 2)
+  defaultFat Decimal @db.Decimal(10, 2)
+  defaultMealCount Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MealTemplate {
+  id String @id @default(cuid())
+  userId String?
+  name String
+  description String?
+  visibility Visibility @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model ExerciseTemplate {
+  id String @id @default(cuid())
+  name String
+  description String?
+  visibility Visibility @default(GLOBAL)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
