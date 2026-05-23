@@ -1,0 +1,8 @@
+export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'COACH' | 'USER' | 'VIEWER';
+export type AppUser = { id: string; email: string; firstName: string; lastName: string; role: Role; phone?: string };
+export type MealItem = { id: string; type: 'PLANNED' | 'ACTUAL'; nameSnapshot: string; quantity: number; unit: string; calories: number; protein: number; carbs: number; fat: number };
+export type Meal = { id: string; mealNumber: number; name: string; plannedTime?: string; status: string; plannedCalories: number; plannedProtein: number; plannedCarbs: number; plannedFat: number; actualCalories: number; actualProtein: number; actualCarbs: number; actualFat: number; items: MealItem[] };
+export type Exercise = { id: string; status: string; sets?: number; reps?: number; durationMinutes?: number; distance?: number; exercise: { name: string; category?: string } };
+export type ProgramMetric = { id: string; metricType: string; startValue: number; currentValue: number; goalValue: number; unit: string };
+export type Program = { id: string; name: string; status: string; startDate: string; targetEndDate?: string; metrics: ProgramMetric[] };
+export type Dashboard = { program: Program | null; dailyLog: any; meals: Meal[]; exercises: Exercise[]; summary: { currentWeight: number; caloriesRemaining: number; proteinRemaining: number; nextMeal: string; exercisesLeft: number; goalProgress: number } | null; weightTrend: { date: string; weight: number }[] };
