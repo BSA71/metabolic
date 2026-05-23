@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/requireAuth.js';
-import { activateProgram, getProgram, listPrograms, updateProgramMetrics } from '../services/programService.js';
+import { activateProgram, getActiveProgram, getProgram, listPrograms, updateProgramMetrics } from '../services/programService.js';
 import { prisma } from '../db/prisma.js';
 
 const programBody = z.object({ name: z.string().min(1), startDate: z.string(), targetEndDate: z.string().optional().nullable() });
@@ -16,6 +16,8 @@ const metricUpdateBody = z.array(
 
 export async function programRoutes(app: FastifyInstance) {
   app.get('/api/programs', { preHandler: requireAuth }, async (request) => listPrograms(request.appUser!));
+
+  app.get('/api/programs/active', { preHandler: requireAuth }, async (request) => getActiveProgram(request.appUser!.id));
 
   app.patch('/api/programs/:id/metrics', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -42,14 +44,20 @@ export async function programRoutes(app: FastifyInstance) {
     return prisma.program.create({ data: { ...body, startDate: new Date(body.startDate), targetEndDate: body.targetEndDate ? new Date(body.targetEndDate) : null, userId: request.appUser!.id } });
   });
 
-  app.patch('/api/programs/:id', { preHandler: requireAuth }, async (request) => {
+  app.patch('/api/programs/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const program = await getProgram(request.appUser!, id);
+    if (!program) return reply.code(404).send({ error: 'Program not found' });
     const body = programBody.partial().parse(request.body);
     return prisma.program.update({ where: { id }, data: { ...body, startDate: body.startDate ? new Date(body.startDate) : undefined, targetEndDate: body.targetEndDate ? new Date(body.targetEndDate) : undefined } });
   });
 
-  app.post('/api/programs/:id/activate', { preHandler: requireAuth }, async (request) => {
+  app.post('/api/programs/:id/activate', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    return activateProgram(request.appUser!.id, id);
+    try {
+      return await activateProgram(request.appUser!, id);
+    } catch (error) {
+      return reply.code(404).send({ error: 'Program not found' });
+    }
   });
 }

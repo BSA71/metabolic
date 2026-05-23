@@ -26,24 +26,28 @@ function metricsEqual(a: ProgramMetric[], b: ProgramMetric[]) {
   });
 }
 
+type LoadState = { status: 'loading' } | { status: 'error' } | { status: 'loaded'; program: Program | null };
+
 export function ProgramPage() {
-  const [program, setProgram] = useState<Program | null>(null);
+  const [loadState, setLoadState] = useState<LoadState>({ status: 'loading' });
   const [draftMetrics, setDraftMetrics] = useState<ProgramMetric[]>([]);
   const [editing, setEditing] = useState<MetricEditTarget | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const loadProgram = useCallback(async () => {
-    const rows = await api<Program[]>('/api/programs');
-    const active = rows[0] ?? null;
-    setProgram(active);
-    setDraftMetrics((active?.metrics ?? []).map(normalizeMetric));
-    setEditing(null);
+  const loadProgram = useCallback(() => {
+    api<Program | null>('/api/programs/active')
+      .then((active) => {
+        setLoadState({ status: 'loaded', program: active });
+        setDraftMetrics((active?.metrics ?? []).map(normalizeMetric));
+        setEditing(null);
+      })
+      .catch(() => setLoadState({ status: 'error' }));
   }, []);
 
-  useEffect(() => {
-    loadProgram().catch(() => setProgram(null));
-  }, [loadProgram]);
+  useEffect(() => { loadProgram(); }, [loadProgram]);
+
+  const program = loadState.status === 'loaded' ? loadState.program : null;
 
   const dirty = useMemo(() => {
     if (!program) return false;
@@ -82,7 +86,9 @@ export function ProgramPage() {
     }
   }
 
-  if (!program) return <p>Loading program...</p>;
+  if (loadState.status === 'loading') return <p>Loading program...</p>;
+  if (loadState.status === 'error') return <p className="text-red-600">Failed to load program. Please try again.</p>;
+  if (!program) return <p>No active program found. Create or activate a program to get started.</p>;
 
   return (
     <>

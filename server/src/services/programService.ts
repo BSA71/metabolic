@@ -6,6 +6,13 @@ export async function listPrograms(user: { id: string; role: Role }) {
   return prisma.program.findMany({ where, include: { metrics: true, user: true }, orderBy: { createdAt: 'desc' } });
 }
 
+export async function getActiveProgram(userId: string) {
+  return prisma.program.findFirst({
+    where: { userId, status: ProgramStatus.ACTIVE },
+    include: { metrics: true, user: true }
+  });
+}
+
 export async function getProgram(user: { id: string; role: Role }, id: string) {
   const program = await prisma.program.findUnique({ where: { id }, include: { metrics: true, user: true } });
   if (!program) return null;
@@ -13,9 +20,11 @@ export async function getProgram(user: { id: string; role: Role }, id: string) {
   return null;
 }
 
-export async function activateProgram(userId: string, id: string) {
+export async function activateProgram(user: { id: string; role: Role }, id: string) {
+  const program = await getProgram(user, id);
+  if (!program) throw new Error('Program not found');
+
   return prisma.$transaction(async (tx) => {
-    const program = await tx.program.findUniqueOrThrow({ where: { id } });
     await tx.program.updateMany({ where: { userId: program.userId, status: ProgramStatus.ACTIVE }, data: { status: ProgramStatus.PAUSED } });
     return tx.program.update({ where: { id }, data: { status: ProgramStatus.ACTIVE } });
   });
