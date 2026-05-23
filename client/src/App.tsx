@@ -22,6 +22,23 @@ function Protected({ firebaseUser, appUser }: { firebaseUser: User | null; appUs
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  useEffect(() => listenForAuth(async (user) => { setFirebaseUser(user); if (user) { try { const me = await api<{ user: AppUser }>('/api/me'); setAppUser(me.user); } catch { setAppUser(null); } } else setAppUser(null); }), []);
+  useEffect(() => {
+    let currentUid: string | null = null;
+    return listenForAuth(async (user) => {
+      const uid = user?.uid ?? null;
+      currentUid = uid;
+      setFirebaseUser(user);
+      if (user) {
+        try {
+          const me = await api<{ user: AppUser }>('/api/me');
+          if (currentUid === uid) setAppUser(me.user);
+        } catch {
+          if (currentUid === uid) setAppUser(null);
+        }
+      } else {
+        setAppUser(null);
+      }
+    });
+  }, []);
   return <BrowserRouter><Routes><Route path="/login" element={<LoginPage authenticated={Boolean(firebaseUser)} appUser={appUser} />} /><Route element={<Protected firebaseUser={firebaseUser} appUser={appUser} />}><Route index element={<DashboardPage />} /><Route path="program" element={<ProgramPage />} /><Route path="nutrition" element={<NutritionPage />} /><Route path="exercise" element={<ExercisePage />} /><Route path="progress" element={<ProgressPage />} /><Route path="assistant" element={<AssistantPage />} /><Route path="admin" element={<AdminPage />} /></Route></Routes></BrowserRouter>;
 }
