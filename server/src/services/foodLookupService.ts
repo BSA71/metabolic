@@ -22,7 +22,7 @@ export async function lookupFood(userId: string, inputText: string) {
   return { source: 'ai', lookup, estimate };
 }
 
-export async function acceptFoodLookup(userId: string, lookupId: string, mealId?: string) {
+export async function acceptFoodLookup(userId: string, lookupId: string, mealId?: string, type: MealItemType = MealItemType.ACTUAL) {
   return prisma.$transaction(async (tx) => {
     const lookup = await tx.aiFoodLookup.findFirstOrThrow({ where: { id: lookupId, userId } });
     const food = await tx.food.create({
@@ -46,7 +46,7 @@ export async function acceptFoodLookup(userId: string, lookupId: string, mealId?
     if (mealId) {
       await addMealItem(userId, mealId, {
         foodId: food.id,
-        type: MealItemType.ACTUAL,
+        type,
         nameSnapshot: food.name,
         quantity: 1,
         unit: food.servingUnit,

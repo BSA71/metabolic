@@ -1,5 +1,6 @@
 import { ProgramStatus } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { ensureTodayDailyLog } from './dailyLogService.js';
 import { startOfUtcDay } from '../utils/dates.js';
 import { n, round } from '../utils/numbers.js';
 
@@ -11,9 +12,9 @@ export async function getTodayDashboard(userId: string) {
   });
   if (!program) return { program: null, dailyLog: null, meals: [], exercises: [], summary: null, weightTrend: [] };
 
-  const dailyLog = await prisma.dailyLog.findUnique({ where: { userId_date: { userId, date: today } } });
+  const dailyLog = await ensureTodayDailyLog(userId, program);
   const [meals, exercises, weightTrend] = await Promise.all([
-    dailyLog ? prisma.meal.findMany({ where: { dailyLogId: dailyLog.id }, include: { items: true }, orderBy: { mealNumber: 'asc' } }) : [],
+    prisma.meal.findMany({ where: { dailyLogId: dailyLog.id }, include: { items: true }, orderBy: { mealNumber: 'asc' } }),
     prisma.scheduledExercise.findMany({ where: { userId, scheduledDate: today }, include: { exercise: true }, orderBy: { createdAt: 'asc' } }),
     prisma.dailyLog.findMany({ where: { userId, weight: { not: null } }, orderBy: { date: 'asc' }, take: 30 })
   ]);
@@ -30,16 +31,14 @@ export async function getTodayDashboard(userId: string) {
     dailyLog,
     meals,
     exercises,
-    summary: dailyLog
-      ? {
+    summary: {
           currentWeight: current || n(dailyLog.weight),
           caloriesRemaining: round(n(dailyLog.calorieTarget) - n(dailyLog.caloriesActual), 1),
           proteinRemaining: round(n(dailyLog.proteinTarget) - n(dailyLog.proteinActual), 1),
           nextMeal: nextMeal?.name ?? 'All meals complete',
           exercisesLeft: exercises.filter((exercise) => exercise.status === 'PLANNED').length,
           goalProgress
-        }
-      : null,
+        },
     weightTrend: weightTrend.map((log) => ({ date: log.date.toISOString().slice(0, 10), weight: n(log.weight) }))
   };
 }

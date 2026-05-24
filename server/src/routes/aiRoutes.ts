@@ -9,7 +9,7 @@ export async function aiRoutes(app: FastifyInstance) {
     return lookupFood(request.appUser!.id, body.inputText);
   });
   app.post('/api/ai/food-lookup/:lookupId/accept', { preHandler: requireAuth }, async (request) => {
-    const body = z.object({ mealId: z.string().optional() }).parse(request.body ?? {});
-    return acceptFoodLookup(request.appUser!.id, (request.params as { lookupId: string }).lookupId, body.mealId);
+    const body = z.object({ mealId: z.string().optional(), type: z.enum(['PLANNED', 'ACTUAL']).optional() }).parse(request.body ?? {});
+    return acceptFoodLookup(request.appUser!.id, (request.params as { lookupId: string }).lookupId, body.mealId, body.type);
   });
 }

@@ -1,7 +1,21 @@
 import { MealItemType, MealStatus } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { parseDateParam } from '../utils/dates.js';
+import { n } from '../utils/numbers.js';
 import { recalculateDailyLogTotals, recalculateMealTotals } from './totalsService.js';
+
+function matchesPlannedActual(
+  actual: { type: MealItemType; linkedPlannedItemId: string | null; nameSnapshot: string; quantity: unknown; foodId: string | null },
+  planned: { id: string; nameSnapshot: string; quantity: unknown; foodId: string | null }
+) {
+  return (
+    actual.type === MealItemType.ACTUAL &&
+    !actual.linkedPlannedItemId &&
+    actual.nameSnapshot === planned.nameSnapshot &&
+    n(actual.quantity) === n(planned.quantity) &&
+    (actual.foodId ?? null) === (planned.foodId ?? null)
+  );
+}
 
 export async function getMealsForDate(userId: string, date: string) {
   const day = parseDateParam(date);
@@ -27,6 +41,7 @@ export async function markMealEatenAsPlanned(userId: string, mealId: string) {
           mealId,
           foodId: item.foodId,
           type: MealItemType.ACTUAL,
+          linkedPlannedItemId: item.id,
           nameSnapshot: item.nameSnapshot,
           quantity: item.quantity,
           unit: item.unit,
@@ -93,8 +108,120 @@ export async function deleteMealItem(userId: string, itemId: string) {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.mealItem.findUniqueOrThrow({ where: { id: itemId }, include: { meal: true } });
     if (existing.meal.userId !== userId) throw new Error('Not found');
+    if (existing.type === MealItemType.PLANNED) {
+      await tx.mealItem.deleteMany({ where: { linkedPlannedItemId: itemId } });
+    }
     await tx.mealItem.delete({ where: { id: itemId } });
     await recalculateMealTotals(existing.mealId, tx);
     return recalculateDailyLogTotals(existing.meal.dailyLogId, tx);
+  });
+}
+
+export async function setPlannedItemLogged(userId: string, plannedItemId: string, logged: boolean) {
+  return prisma.$transaction(async (tx) => {
+    const planned = await tx.mealItem.findUniqueOrThrow({
+      where: { id: plannedItemId },
+      include: { meal: { include: { items: true } } }
+    });
+    if (planned.meal.userId !== userId || planned.type !== MealItemType.PLANNED) throw new Error('Not found');
+
+    const existingActual = planned.meal.items.find(
+      (item) => item.type === MealItemType.ACTUAL && item.linkedPlannedItemId === plannedItemId
+    );
+    const matchingUnlinkedActual = planned.meal.items.find((item) => matchesPlannedActual(item, planned));
+
+    if (logged) {
+      if (existingActual) {
+        // already linked
+      } else if (matchingUnlinkedActual) {
+        await tx.mealItem.update({
+          where: { id: matchingUnlinkedActual.id },
+          data: { linkedPlannedItemId: planned.id }
+        });
+      } else {
+        await tx.mealItem.create({
+          data: {
+            mealId: planned.mealId,
+            foodId: planned.foodId,
+            type: MealItemType.ACTUAL,
+            linkedPlannedItemId: planned.id,
+            nameSnapshot: planned.nameSnapshot,
+            quantity: planned.quantity,
+            unit: planned.unit,
+            calories: planned.calories,
+            protein: planned.protein,
+            carbs: planned.carbs,
+            fat: planned.fat
+          }
+        });
+      }
+    } else {
+      const toRemove = existingActual ?? matchingUnlinkedActual;
+      if (toRemove) await tx.mealItem.delete({ where: { id: toRemove.id } });
+    }
+
+    await recalculateMealTotals(planned.mealId, tx);
+    await recalculateDailyLogTotals(planned.meal.dailyLogId, tx);
+
+    const meal = await tx.meal.findFirstOrThrow({ where: { id: planned.mealId }, include: { items: true } });
+    const plannedCount = meal.items.filter((item) => item.type === MealItemType.PLANNED).length;
+    const loggedCount = meal.items.filter(
+      (item) => item.type === MealItemType.ACTUAL && item.linkedPlannedItemId
+    ).length;
+    const hasUnlinkedActual = meal.items.some(
+      (item) => item.type === MealItemType.ACTUAL && !item.linkedPlannedItemId
+    );
+
+    let status: MealStatus = MealStatus.PLANNED;
+    if (plannedCount > 0 && loggedCount === plannedCount && !hasUnlinkedActual) {
+      status = MealStatus.EATEN_AS_PLANNED;
+    } else if (meal.items.some((item) => item.type === MealItemType.ACTUAL)) {
+      status = MealStatus.MODIFIED;
+    }
+
+    await tx.meal.update({ where: { id: planned.mealId }, data: { status } });
+    return meal;
+  });
+}
+
+export async function copyMealFromPreviousDay(userId: string, mealId: string) {
+  return prisma.$transaction(async (tx) => {
+    const meal = await tx.meal.findFirstOrThrow({
+      where: { id: mealId, userId },
+      include: { dailyLog: true }
+    });
+
+    const priorLog = await tx.dailyLog.findFirst({
+      where: { userId, date: { lt: meal.dailyLog.date } },
+      orderBy: { date: 'desc' },
+      include: { meals: { where: { mealNumber: meal.mealNumber }, include: { items: true } } }
+    });
+
+    if (!priorLog?.meals[0]) throw new Error('No prior meal found to copy');
+
+    const sourceMeal = priorLog.meals[0];
+    const plannedItems = sourceMeal.items.filter((item) => item.type === MealItemType.PLANNED);
+
+    await tx.mealItem.deleteMany({ where: { mealId, type: MealItemType.PLANNED } });
+
+    if (plannedItems.length) {
+      await tx.mealItem.createMany({
+        data: plannedItems.map((item) => ({
+          mealId,
+          foodId: item.foodId,
+          type: MealItemType.PLANNED,
+          nameSnapshot: item.nameSnapshot,
+          quantity: item.quantity,
+          unit: item.unit,
+          calories: item.calories,
+          protein: item.protein,
+          carbs: item.carbs,
+          fat: item.fat
+        }))
+      });
+    }
+
+    await recalculateMealTotals(mealId, tx);
+    return tx.meal.findFirstOrThrow({ where: { id: mealId }, include: { items: true } });
   });
 }

@@ -4,12 +4,16 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = await getIdToken();
+  const method = (options.method ?? 'GET').toUpperCase();
+  const body = options.body ?? (['POST', 'PUT', 'PATCH'].includes(method) ? '{}' : undefined);
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
       ...options,
+      method,
+      body,
       headers: {
-        'Content-Type': 'application/json',
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers
       }
@@ -19,9 +23,67 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error ?? response.statusText);
+    throw new Error(payload?.error ?? payload?.message ?? response.statusText);
   }
-  return response.json();
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const todayKey = () => new Date().toISOString().slice(0, 10);
+
+export function parseDateKey(date: string) {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+export function toDateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export function addDays(date: string, days: number) {
+  const d = parseDateKey(date);
+  d.setUTCDate(d.getUTCDate() + days);
+  return toDateKey(d);
+}
+
+export function startOfWeek(date: string) {
+  const d = parseDateKey(date);
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return toDateKey(d);
+}
+
+export function getWeekDates(weekStart: string) {
+  return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+}
+
+export function isToday(date: string) {
+  return date === todayKey();
+}
+
+export function isFuture(date: string) {
+  return date > todayKey();
+}
+
+export function formatWeekRange(weekStart: string) {
+  const end = addDays(weekStart, 6);
+  const start = parseDateKey(weekStart);
+  const endDate = parseDateKey(end);
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', timeZone: 'UTC' };
+  const startStr = start.toLocaleDateString('en-US', opts);
+  const endStr = endDate.toLocaleDateString('en-US', opts);
+  if (start.getUTCMonth() === endDate.getUTCMonth()) {
+    return `${start.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })} ${start.getUTCDate()} – ${endDate.getUTCDate()}`;
+  }
+  return `${startStr} – ${endStr}`;
+}
+
+export function formatDayAbbrev(date: string) {
+  return parseDateKey(date).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+}
+
+export function formatDayNumber(date: string) {
+  return parseDateKey(date).getUTCDate();
+}
