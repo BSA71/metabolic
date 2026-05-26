@@ -1,7 +1,56 @@
+import { useNavigate } from 'react-router-dom';
 import type { Exercise } from '../../types';
-import { Badge } from '../ui/Badge';
+import { todayKey } from '../../services/api';
+import { ExerciseCard } from '../exercise/ExerciseCard';
 import { Card } from '../ui/Card';
 
-export function TodayExercise({ exercises }: { exercises: Exercise[] }) {
-  return <Card><h2 className="mb-4 text-lg font-bold">Today's Exercises</h2><div className="space-y-3">{exercises.map((item) => <div key={item.id} className="flex items-center justify-between rounded-2xl bg-slate-50 p-3"><div><p className="font-semibold">{item.exercise.name}</p><p className="text-sm text-slate-500">{item.sets ? `${item.sets} sets x ${item.reps ?? '-'} reps` : `${item.durationMinutes ?? 0} min`}</p></div><Badge tone={item.status === 'DONE' ? 'green' : 'blue'}>{item.status}</Badge></div>)}</div></Card>;
+export function TodayExercise({
+  exercises,
+  onChange
+}: {
+  exercises: Exercise[];
+  onChange: () => void | Promise<void>;
+}) {
+  const navigate = useNavigate();
+  const selectedDate = todayKey();
+  const todo = exercises.filter((item) => item.status === 'PLANNED');
+  const completed = exercises.filter((item) => item.status !== 'PLANNED');
+
+  return (
+    <Card>
+      <h2 className="mb-4 text-lg font-bold">Today&apos;s Exercises</h2>
+      {!exercises.length ? (
+        <p className="text-sm text-slate-500">No exercises planned today.</p>
+      ) : (
+        <div className="space-y-4">
+          {todo.length > 0 && (
+            <div className="space-y-2">
+              {todo.map((item) => (
+                <ExerciseCard
+                  key={item.id}
+                  item={item}
+                  selectedDate={selectedDate}
+                  onChange={onChange}
+                  onEdit={() => navigate('/exercise')}
+                />
+              ))}
+            </div>
+          )}
+          {completed.length > 0 && (
+            <div className="space-y-2">
+              {completed.map((item) => (
+                <ExerciseCard
+                  key={item.id}
+                  item={item}
+                  selectedDate={selectedDate}
+                  onChange={onChange}
+                  onEdit={() => navigate('/exercise')}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
 }

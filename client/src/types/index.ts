@@ -3,7 +3,43 @@ export type AppUser = { id: string; email: string; firstName: string; lastName: 
 export type Food = { id: string; name: string; servingSize: number; servingUnit: string; calories: number; protein: number; carbs: number; fat: number; brand?: string };
 export type MealItem = { id: string; type: 'PLANNED' | 'ACTUAL'; linkedPlannedItemId?: string | null; foodId?: string | null; nameSnapshot: string; quantity: number; unit: string; calories: number; protein: number; carbs: number; fat: number };
 export type Meal = { id: string; mealNumber: number; name: string; plannedTime?: string; status: string; plannedCalories: number; plannedProtein: number; plannedCarbs: number; plannedFat: number; actualCalories: number; actualProtein: number; actualCarbs: number; actualFat: number; items: MealItem[] };
-export type Exercise = { id: string; status: string; sets?: number; reps?: number; durationMinutes?: number; distance?: number; exercise: { name: string; category?: string } };
+export type ExerciseCatalogItem = {
+  id: string;
+  name: string;
+  category?: string | null;
+  bodyPart?: string | null;
+  description?: string | null;
+  defaultSets?: number | null;
+  defaultReps?: number | null;
+  defaultDurationMinutes?: number | null;
+  defaultDistance?: number | null;
+};
+export const EXERCISE_CATEGORIES = ['Strength', 'Cardio', 'Recovery'] as const;
+export const EXERCISE_BODY_PARTS = [
+  'Chest',
+  'Back',
+  'Shoulders',
+  'Biceps',
+  'Triceps',
+  'Forearms',
+  'Core',
+  'Legs',
+  'Glutes',
+  'Calves',
+  'Full Body'
+] as const;
+export type ScheduledExercise = {
+  id: string;
+  status: string;
+  sets?: number | null;
+  reps?: number | null;
+  durationMinutes?: number | null;
+  distance?: number | null;
+  weight?: number | null;
+  exercise: { name: string; category?: string | null; bodyPart?: string | null; description?: string | null };
+};
+/** @deprecated Use ScheduledExercise — kept for dashboard compatibility */
+export type Exercise = ScheduledExercise;
 export type ProgramMetric = { id: string; metricType: string; startValue: number; currentValue: number; goalValue: number; unit: string };
 export type Program = { id: string; name: string; status: string; startDate: string; targetEndDate?: string; metrics: ProgramMetric[] };
 export type Dashboard = { program: Program | null; dailyLog: any; meals: Meal[]; exercises: Exercise[]; summary: { currentWeight: number; caloriesRemaining: number; proteinRemaining: number; nextMeal: string; exercisesLeft: number; goalProgress: number } | null; weightTrend: { date: string; weight: number }[] };

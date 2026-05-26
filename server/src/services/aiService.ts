@@ -11,10 +11,22 @@ export type FoodEstimate = {
   confidence: number;
 };
 
+export type ExerciseEstimate = {
+  name: string;
+  description: string;
+  category: string | null;
+  bodyPart: string | null;
+  defaultSets: number | null;
+  defaultReps: number | null;
+  defaultDurationMinutes: number | null;
+  confidence: number;
+};
+
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 export interface AiProvider {
   lookupFood(input: string): Promise<FoodEstimate[]>;
+  lookupExercises(input: string): Promise<ExerciseEstimate[]>;
   chat(messages: ChatMessage[], context: string): Promise<string>;
 }
 
@@ -32,9 +44,104 @@ const foodLookupResponseSchema = z.union([
   foodEstimateSchema.transform((item) => ({ items: [item] }))
 ]);
 
+function normalizeExerciseCategory(value: string | null) {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes('cardio') || normalized.includes('endurance') || normalized.includes('run')) return 'Cardio';
+  if (normalized.includes('recover') || normalized.includes('mobil') || normalized.includes('stretch') || normalized.includes('yoga')) {
+    return 'Recovery';
+  }
+  if (normalized.includes('strength') || normalized.includes('resist') || normalized.includes('weight')) return 'Strength';
+  return null;
+}
+
+const EXERCISE_BODY_PARTS = [
+  'Chest',
+  'Back',
+  'Shoulders',
+  'Biceps',
+  'Triceps',
+  'Forearms',
+  'Core',
+  'Legs',
+  'Glutes',
+  'Calves',
+  'Full Body'
+] as const;
+
+function normalizeExerciseBodyPart(value: string | null) {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  const exact = EXERCISE_BODY_PARTS.find((part) => part.toLowerCase() === normalized);
+  if (exact) return exact;
+  if (normalized.includes('bicep')) return 'Biceps';
+  if (normalized.includes('tricep')) return 'Triceps';
+  if (normalized.includes('chest')) return 'Chest';
+  if (normalized.includes('back') || normalized.includes('lat')) return 'Back';
+  if (normalized.includes('shoulder')) return 'Shoulders';
+  if (normalized.includes('forearm')) return 'Forearms';
+  if (normalized.includes('core') || normalized.includes('abs') || normalized.includes('ab ')) return 'Core';
+  if (normalized.includes('glute')) return 'Glutes';
+  if (normalized.includes('calf') || normalized.includes('calves')) return 'Calves';
+  if (normalized.includes('leg') || normalized.includes('quad') || normalized.includes('hamstring')) return 'Legs';
+  if (normalized.includes('full')) return 'Full Body';
+  return null;
+}
+
+const exerciseCategorySchema = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((value) => normalizeExerciseCategory(value ?? null));
+
+const exerciseBodyPartSchema = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((value) => normalizeExerciseBodyPart(value ?? null));
+
+const optionalInt = z
+  .union([z.number(), z.string(), z.null()])
+  .optional()
+  .transform((value) => {
+    if (value == null || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : null;
+  });
+
+const exerciseEstimateSchema = z.object({
+  name: z.union([z.string(), z.number()]).transform((value) => String(value).trim()).pipe(z.string().min(1)),
+  description: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((value) => {
+      const text = value == null ? '' : String(value).trim();
+      return text || 'Perform with controlled form and steady breathing.';
+    })
+    .pipe(z.string().min(1).max(500)),
+  category: exerciseCategorySchema,
+  bodyPart: exerciseBodyPartSchema,
+  defaultSets: optionalInt,
+  defaultReps: optionalInt,
+  defaultDurationMinutes: optionalInt,
+  confidence: z
+    .union([z.number(), z.string(), z.null()])
+    .optional()
+    .transform((value) => {
+      const parsed = value == null || value === '' ? 0.75 : Number(value);
+      return roundConfidence(Number.isFinite(parsed) ? parsed : 0.75);
+    })
+});
+
+const exerciseLookupResponseSchema = z.object({
+  items: z.array(exerciseEstimateSchema).min(1).max(8)
+});
+
 const FOOD_LOOKUP_PROMPT = `Estimate nutrition for each distinct food in the input.
 Return JSON only: { "items": [ { "normalizedFoodName": string (include portion), "calories": number, "protein": grams, "carbs": grams, "fat": grams, "confidence": 0-1 }, ... ] }
 Each food line must be its own item. Never combine multiple foods into one entry.`;
+
+const EXERCISE_LOOKUP_PROMPT = `Suggest relevant exercises for the user's query.
+Return JSON only: { "items": [ { "name": string, "description": string (1 short sentence on form and cues), "category": "Strength"|"Cardio"|"Recovery"|null, "bodyPart": "Chest"|"Back"|"Shoulders"|"Biceps"|"Triceps"|"Forearms"|"Core"|"Legs"|"Glutes"|"Calves"|"Full Body"|null, "defaultSets": number|null, "defaultReps": number|null, "defaultDurationMinutes": number|null, "confidence": 0-1 }, ... ] }
+Return exactly 4 distinct exercises. Keep descriptions under 140 characters. Use Strength for resistance work, Cardio for endurance, Recovery for mobility/stretching. Set bodyPart to the primary muscle group trained.`;
 
 const ASSISTANT_SYSTEM = `You are a concise metabolic health coach assistant for the Metabolic app.
 Answer using the user's live program data when relevant. Be practical and specific.
@@ -53,11 +160,54 @@ function normalizeEstimate(parsed: z.infer<typeof foodEstimateSchema>): FoodEsti
   };
 }
 
+function normalizeExerciseEstimate(parsed: z.infer<typeof exerciseEstimateSchema>): ExerciseEstimate {
+  return {
+    name: parsed.name.trim(),
+    description: parsed.description.trim(),
+    category: parsed.category ?? null,
+    bodyPart: parsed.bodyPart ?? null,
+    defaultSets: parsed.defaultSets ?? null,
+    defaultReps: parsed.defaultReps ?? null,
+    defaultDurationMinutes: parsed.defaultDurationMinutes ?? null,
+    confidence: roundConfidence(parsed.confidence)
+  };
+}
+
 function splitFoodLines(input: string) {
   return input
     .split(/\n|,|;|•/)
     .map((line) => line.trim())
     .filter((line) => line.length >= 2);
+}
+
+function parseModelJson(text: string) {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('Model returned invalid JSON');
+    return JSON.parse(match[0]);
+  }
+}
+
+function parseExerciseLookupResponse(text: string) {
+  const parsed = parseModelJson(text);
+  const result = exerciseLookupResponseSchema.safeParse(parsed);
+  if (result.success) return result.data.items.map(normalizeExerciseEstimate);
+
+  const items = Array.isArray(parsed?.items) ? parsed.items : Array.isArray(parsed) ? parsed : [parsed];
+  const normalized: ExerciseEstimate[] = [];
+  for (const item of items) {
+    const parsedItem = exerciseEstimateSchema.safeParse(item);
+    if (parsedItem.success) normalized.push(normalizeExerciseEstimate(parsedItem.data));
+  }
+
+  if (!normalized.length) {
+    throw result.error;
+  }
+
+  return normalized;
 }
 
 class MockAiProvider implements AiProvider {
@@ -80,6 +230,103 @@ class MockAiProvider implements AiProvider {
     });
   }
 
+  async lookupExercises(input: string): Promise<ExerciseEstimate[]> {
+    const query = input.trim();
+    const lower = query.toLowerCase();
+    if (lower.includes('bicep') || lower.includes('biceps')) {
+      return [
+        {
+          name: 'Dumbbell Bicep Curl',
+          description: 'Stand tall with dumbbells at your sides. Curl up without swinging, then lower under control.',
+          category: 'Strength',
+          bodyPart: 'Biceps',
+          defaultSets: 3,
+          defaultReps: 10,
+          defaultDurationMinutes: null,
+          confidence: 0.84
+        },
+        {
+          name: 'Hammer Curl',
+          description: 'Hold dumbbells with neutral palms facing in. Curl while keeping elbows close to your ribs.',
+          category: 'Strength',
+          bodyPart: 'Biceps',
+          defaultSets: 3,
+          defaultReps: 10,
+          defaultDurationMinutes: null,
+          confidence: 0.82
+        },
+        {
+          name: 'Cable Curl',
+          description: 'Use a low cable handle and curl with steady tension. Avoid leaning back at the top.',
+          category: 'Strength',
+          bodyPart: 'Biceps',
+          defaultSets: 3,
+          defaultReps: 12,
+          defaultDurationMinutes: null,
+          confidence: 0.8
+        }
+      ];
+    }
+
+    if (lower.includes('abs') || lower.includes('core')) {
+      return [
+        {
+          name: 'Plank',
+          description: 'Hold a straight line from head to heels with ribs down and glutes engaged.',
+          category: 'Strength',
+          bodyPart: 'Core',
+          defaultSets: 3,
+          defaultReps: null,
+          defaultDurationMinutes: 1,
+          confidence: 0.86
+        },
+        {
+          name: 'Dead Bug',
+          description: 'Press your lower back into the floor while extending opposite arm and leg slowly.',
+          category: 'Strength',
+          bodyPart: 'Core',
+          defaultSets: 3,
+          defaultReps: 10,
+          defaultDurationMinutes: null,
+          confidence: 0.84
+        },
+        {
+          name: 'Bicycle Crunch',
+          description: 'Rotate through the ribs and bring elbow to knee without pulling on your neck.',
+          category: 'Strength',
+          bodyPart: 'Core',
+          defaultSets: 3,
+          defaultReps: 20,
+          defaultDurationMinutes: null,
+          confidence: 0.82
+        },
+        {
+          name: 'Hollow Body Hold',
+          description: 'Lower back stays glued to the floor while arms and legs hover in a tight hollow shape.',
+          category: 'Strength',
+          bodyPart: 'Core',
+          defaultSets: 3,
+          defaultReps: null,
+          defaultDurationMinutes: 1,
+          confidence: 0.8
+        }
+      ];
+    }
+
+    return [
+      {
+        name: query.replace(/\s+/g, ' ').slice(0, 60) || 'Custom exercise',
+        description: 'Perform with controlled form, full range of motion, and steady breathing throughout each rep.',
+        category: 'Strength',
+        bodyPart: null,
+        defaultSets: 3,
+        defaultReps: 10,
+        defaultDurationMinutes: null,
+        confidence: 0.65
+      }
+    ];
+  }
+
   async chat(messages: ChatMessage[], context: string): Promise<string> {
     const last = messages.at(-1)?.content.toLowerCase() ?? '';
     if (last.includes('meal')) return `Based on your data: ${context.slice(0, 200)}… (mock provider — set AI_PROVIDER=gemini to enable Gemini.)`;
@@ -89,6 +336,10 @@ class MockAiProvider implements AiProvider {
 }
 
 function wrapAiError(error: unknown, action: string): Error {
+  if (error instanceof z.ZodError) {
+    const detail = error.issues[0]?.message ?? 'Invalid AI response';
+    return new Error(`AI ${action} failed: ${detail}`);
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('404 Not Found') && message.includes('model')) {
     return new Error(`Gemini model "${env.GEMINI_MODEL}" is unavailable. Set GEMINI_MODEL=gemini-2.5-flash in server/.env and restart the API.`);
@@ -122,6 +373,17 @@ class GeminiAiProvider implements AiProvider {
     });
   }
 
+  private exerciseModel() {
+    return this.client.getGenerativeModel({
+      model: this.model,
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.2,
+        maxOutputTokens: 4096
+      }
+    });
+  }
+
   private chatModel() {
     return this.client.getGenerativeModel({
       model: this.model,
@@ -141,6 +403,29 @@ class GeminiAiProvider implements AiProvider {
       return parsed.items.map(normalizeEstimate);
     } catch (error) {
       throw wrapAiError(error, 'food lookup');
+    }
+  }
+
+  async lookupExercises(input: string): Promise<ExerciseEstimate[]> {
+    const query = input.trim();
+    const prompt = `${EXERCISE_LOOKUP_PROMPT}\n\nUser query: ${query}`;
+
+    try {
+      const result = await this.exerciseModel().generateContent(prompt);
+      return parseExerciseLookupResponse(result.response.text());
+    } catch (error) {
+      try {
+        const retry = await this.exerciseModel().generateContent(
+          `${prompt}\n\nImportant: respond with valid JSON only and no more than 4 items.`
+        );
+        return parseExerciseLookupResponse(retry.response.text());
+      } catch {
+        try {
+          return await new MockAiProvider().lookupExercises(query);
+        } catch {
+          throw wrapAiError(error, 'exercise lookup');
+        }
+      }
     }
   }
 

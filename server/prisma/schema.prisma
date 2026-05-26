@@ -102,6 +102,7 @@ model User {
   scheduledExercises ScheduledExercise[]
   exerciseLogs ExerciseLog[]
   aiFoodLookups AiFoodLookup[]
+  aiExerciseLookups AiExerciseLookup[]
   smsMessages SmsMessage[]
   coachAssignments CoachAssignment[] @relation("CoachAssignments")
   userAssignments CoachAssignment[] @relation("UserAssignments")
@@ -289,6 +290,7 @@ model Exercise {
   id String @id @default(cuid())
   name String
   category String?
+  bodyPart String?
   description String?
   defaultSets Int?
   defaultReps Int?
@@ -297,6 +299,7 @@ model Exercise {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   scheduledExercises ScheduledExercise[]
+  aiLookups AiExerciseLookup[]
 }
 
 model ScheduledExercise {
@@ -353,6 +356,25 @@ model AiFoodLookup {
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   food Food? @relation(fields: [foodId], references: [id])
+}
+
+model AiExerciseLookup {
+  id String @id @default(cuid())
+  userId String
+  inputText String
+  name String
+  description String?
+  category String?
+  bodyPart String?
+  defaultSets Int?
+  defaultReps Int?
+  defaultDurationMinutes Int?
+  confidence Decimal? @db.Decimal(5, 2)
+  accepted Boolean @default(false)
+  exerciseId String?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise? @relation(fields: [exerciseId], references: [id])
 }
 
 model SmsMessage {

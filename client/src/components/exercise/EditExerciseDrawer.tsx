@@ -1,0 +1,189 @@
+import { useState } from 'react';
+import type { ScheduledExercise } from '../../types';
+import { EXERCISE_BODY_PARTS, EXERCISE_CATEGORIES } from '../../types';
+import { api } from '../../services/api';
+import { Button } from '../ui/Button';
+import { Drawer } from '../ui/Drawer';
+
+function toInput(value?: number | null) {
+  return value == null ? '' : String(value);
+}
+
+export function EditExerciseDrawer({
+  open,
+  item,
+  onClose,
+  onSaved
+}: {
+  open: boolean;
+  item?: ScheduledExercise;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  return (
+    <Drawer open={open} title={item ? `Edit — ${item.exercise.name}` : 'Edit exercise'} onClose={onClose}>
+      {open && item && <EditExerciseDrawerContent key={item.id} item={item} onClose={onClose} onSaved={onSaved} />}
+    </Drawer>
+  );
+}
+
+function EditExerciseDrawerContent({
+  item,
+  onClose,
+  onSaved
+}: {
+  item: ScheduledExercise;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [sets, setSets] = useState(() => toInput(item.sets));
+  const [reps, setReps] = useState(() => toInput(item.reps));
+  const [durationMinutes, setDurationMinutes] = useState(() => toInput(item.durationMinutes));
+  const [weight, setWeight] = useState(() => toInput(item.weight));
+  const [description, setDescription] = useState(() => item.exercise.description ?? '');
+  const [category, setCategory] = useState(() => item.exercise.category ?? '');
+  const [bodyPart, setBodyPart] = useState(() => item.exercise.bodyPart ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+
+  async function save() {
+    setSaving(true);
+    setError(undefined);
+    try {
+      await api(`/api/scheduled-exercises/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          sets: sets === '' ? null : Number(sets),
+          reps: reps === '' ? null : Number(reps),
+          durationMinutes: durationMinutes === '' ? null : Number(durationMinutes),
+          weight: weight === '' ? null : Number(weight),
+          description: description.trim() || null,
+          category: category.trim() || null,
+          bodyPart: bodyPart.trim() || null
+        })
+      });
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save exercise');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (!item || !confirm(`Remove ${item.exercise.name} from this day?`)) return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      await api(`/api/scheduled-exercises/${item.id}`, { method: 'DELETE' });
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove exercise');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-sm">
+              <span className="font-medium text-slate-700">Sets</span>
+              <input
+                type="number"
+                min={0}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+                value={sets}
+                onChange={(event) => setSets(event.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="font-medium text-slate-700">Reps</span>
+              <input
+                type="number"
+                min={0}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+                value={reps}
+                onChange={(event) => setReps(event.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="font-medium text-slate-700">Minutes</span>
+              <input
+                type="number"
+                min={0}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+                value={durationMinutes}
+                onChange={(event) => setDurationMinutes(event.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="font-medium text-slate-700">Weight (lbs)</span>
+              <input
+                type="number"
+                min={0}
+                step="0.5"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+                value={weight}
+                onChange={(event) => setWeight(event.target.value)}
+              />
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Body part</span>
+            <select
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+              value={bodyPart}
+              onChange={(event) => setBodyPart(event.target.value)}
+            >
+              <option value="">Select body part…</option>
+              {EXERCISE_BODY_PARTS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Type</span>
+            <select
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+            >
+              <option value="">Select type…</option>
+              {EXERCISE_CATEGORIES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Description</span>
+            <textarea
+              className="mt-1 h-24 w-full rounded-xl border border-slate-200 px-3 py-2"
+              placeholder="Notes, form cues, or instructions…"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </label>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void save()} disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+            <button
+              type="button"
+              className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
+              onClick={() => void remove()}
+              disabled={saving}
+            >
+              Remove from day
+            </button>
+          </div>
+        </div>
+  );
+}

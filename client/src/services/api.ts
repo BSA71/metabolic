@@ -19,7 +19,11 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       }
     });
   } catch (error) {
-    throw new Error(error instanceof Error ? error.message : 'Network request failed');
+    const message = error instanceof Error ? error.message : 'Network request failed';
+    if (message === 'Load failed' || message === 'Failed to fetch') {
+      throw new Error('Could not reach the server. Make sure the API is running.');
+    }
+    throw new Error(message);
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => null);

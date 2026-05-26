@@ -93,7 +93,7 @@ export function DashboardPage() {
       </section>
       <section className="grid gap-6 lg:grid-cols-2">
         <TodayNutrition meals={data.meals} onChange={() => loadDashboard({ silent: true })} />
-        <TodayExercise exercises={data.exercises} />
+        <TodayExercise exercises={data.exercises} onChange={() => loadDashboard({ silent: true })} />
         <MacroProgress dashboard={data} />
         <WeightTrendChart data={data.weightTrend} />
       </section>
