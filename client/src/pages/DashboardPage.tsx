@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Bot } from 'lucide-react';
 import { api } from '../services/api';
 import { getIdToken } from '../services/auth';
@@ -15,42 +15,37 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadDashboard() {
+  const loadDashboard = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
       setLoading(true);
       setError('');
-
-      try {
-        const token = await getIdToken();
-        if (!token) {
-          throw new Error('Not signed in yet. Please refresh or sign in again.');
-        }
-
-        const dashboard = await api<Dashboard>('/api/dashboard/today');
-        if (cancelled) return;
-
-        if (dashboard.program && !dashboard.summary) {
-          throw new Error('Dashboard data is incomplete. Restart the backend server and try again.');
-        }
-
-        setData(dashboard);
-      } catch (err) {
-        if (!cancelled) {
-          setData(null);
-          setError(err instanceof Error ? err.message : 'Unable to load dashboard');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
     }
 
-    loadDashboard();
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        throw new Error('Not signed in yet. Please refresh or sign in again.');
+      }
+
+      const dashboard = await api<Dashboard>('/api/dashboard/today');
+      if (dashboard.program && !dashboard.summary) {
+        throw new Error('Dashboard data is incomplete. Restart the backend server and try again.');
+      }
+
+      setData(dashboard);
+    } catch (err) {
+      if (!options?.silent) {
+        setData(null);
+        setError(err instanceof Error ? err.message : 'Unable to load dashboard');
+      }
+    } finally {
+      if (!options?.silent) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   if (loading) return <p>Loading dashboard...</p>;
   if (error) {
@@ -97,7 +92,7 @@ export function DashboardPage() {
         <MetricTile label="Goal Progress" value={`${s.goalProgress}%`} />
       </section>
       <section className="grid gap-6 lg:grid-cols-2">
-        <TodayNutrition meals={data.meals} />
+        <TodayNutrition meals={data.meals} onChange={() => loadDashboard({ silent: true })} />
         <TodayExercise exercises={data.exercises} />
         <MacroProgress dashboard={data} />
         <WeightTrendChart data={data.weightTrend} />
