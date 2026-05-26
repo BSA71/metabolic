@@ -11,6 +11,7 @@ const envSchema = z.object({
   AI_PROVIDER: z.enum(["mock", "openai", "gemini"]).default("mock"),
   OPENAI_API_KEY: z.string().optional().default(""),
   GEMINI_API_KEY: z.string().optional().default(""),
+  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
   TWILIO_ACCOUNT_SID: z.string().optional().default(""),
   TWILIO_AUTH_TOKEN: z.string().optional().default(""),
   TWILIO_PHONE_NUMBER: z.string().optional().default(""),
