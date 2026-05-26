@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/requireAuth.js';
 import { acceptFoodLookup, acceptFoodLookups, lookupFood } from '../services/foodLookupService.js';
+import { acceptExerciseLookup, lookupExercise } from '../services/exerciseLookupService.js';
 import { chatWithAssistant } from '../services/assistantService.js';
 
 const chatMessageSchema = z.object({
@@ -26,6 +27,18 @@ export async function aiRoutes(app: FastifyInstance) {
     const body = z.object({ mealId: z.string().optional(), type: z.enum(['PLANNED', 'ACTUAL']).optional() }).parse(request.body ?? {});
     return acceptFoodLookup(request.appUser!.id, (request.params as { lookupId: string }).lookupId, body.mealId, body.type);
   });
+  app.post('/api/ai/exercise-lookup', { preHandler: requireAuth }, async (request, reply) => {
+    try {
+      const body = z.object({ inputText: z.string().min(2) }).parse(request.body);
+      return await lookupExercise(request.appUser!.id, body.inputText);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Exercise lookup failed';
+      return reply.code(500).send({ error: message });
+    }
+  });
+  app.post('/api/ai/exercise-lookup/:lookupId/accept', { preHandler: requireAuth }, async (request) =>
+    acceptExerciseLookup(request.appUser!.id, (request.params as { lookupId: string }).lookupId)
+  );
   app.post('/api/ai/chat', { preHandler: requireAuth }, async (request) => {
     const body = z.object({ messages: z.array(chatMessageSchema).min(1).max(20) }).parse(request.body);
     return chatWithAssistant(request.appUser!.id, body.messages);

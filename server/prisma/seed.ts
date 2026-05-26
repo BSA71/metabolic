@@ -76,8 +76,8 @@ async function main() {
 
   const exercises = await Promise.all([
     prisma.exercise.create({ data: { name: 'Morning walk', category: 'Cardio', defaultDurationMinutes: 30 } }),
-    prisma.exercise.create({ data: { name: 'Goblet squat', category: 'Strength', defaultSets: 3, defaultReps: 10 } }),
-    prisma.exercise.create({ data: { name: 'Push-up', category: 'Strength', defaultSets: 3, defaultReps: 8 } }),
+    prisma.exercise.create({ data: { name: 'Goblet squat', category: 'Strength', bodyPart: 'Legs', defaultSets: 3, defaultReps: 10 } }),
+    prisma.exercise.create({ data: { name: 'Push-up', category: 'Strength', bodyPart: 'Chest', defaultSets: 3, defaultReps: 8 } }),
     prisma.exercise.create({ data: { name: 'Mobility flow', category: 'Recovery', defaultDurationMinutes: 15 } })
   ]);
   for (const [index, exercise] of exercises.entries()) {

@@ -1,6 +1,7 @@
 import { ProgramStatus } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { ensureTodayDailyLog } from './dailyLogService.js';
+import { sortScheduledExercises } from './exerciseService.js';
 import { startOfUtcDay } from '../utils/dates.js';
 import { n, round } from '../utils/numbers.js';
 
@@ -13,11 +14,12 @@ export async function getTodayDashboard(userId: string) {
   if (!program) return { program: null, dailyLog: null, meals: [], exercises: [], summary: null, weightTrend: [] };
 
   const dailyLog = await ensureTodayDailyLog(userId, program);
-  const [meals, exercises, weightTrend] = await Promise.all([
+  const [meals, rawExercises, weightTrend] = await Promise.all([
     prisma.meal.findMany({ where: { dailyLogId: dailyLog.id }, include: { items: true }, orderBy: { mealNumber: 'asc' } }),
     prisma.scheduledExercise.findMany({ where: { userId, scheduledDate: today }, include: { exercise: true }, orderBy: { createdAt: 'asc' } }),
     prisma.dailyLog.findMany({ where: { userId, weight: { not: null } }, orderBy: { date: 'asc' }, take: 30 })
   ]);
+  const exercises = sortScheduledExercises(rawExercises);
 
   const weightMetric = program.metrics.find((metric) => metric.metricType === 'WEIGHT');
   const start = n(weightMetric?.startValue);

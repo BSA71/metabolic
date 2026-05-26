@@ -1,27 +1,255 @@
-import { ExerciseStatus } from '@prisma/client';
+import { ExerciseStatus, ProgramStatus } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
-import { parseDateParam } from '../utils/dates.js';
+import { parseDateParam, toDateKey } from '../utils/dates.js';
+import { ensureDailyLogByUserId } from './dailyLogService.js';
+import { recalculateDailyLogTotals } from './totalsService.js';
+
+async function getActiveProgram(userId: string) {
+  return prisma.program.findFirst({
+    where: { userId, status: ProgramStatus.ACTIVE }
+  });
+}
+
+async function recalculateForDate(userId: string, date: string) {
+  const day = parseDateParam(date);
+  const log = await prisma.dailyLog.findUnique({
+    where: { userId_date: { userId, date: day } }
+  });
+  if (log) await recalculateDailyLogTotals(log.id);
+}
 
 export async function getExercises() {
   return prisma.exercise.findMany({ orderBy: { name: 'asc' } });
 }
 
+const completedExerciseStatuses = new Set<ExerciseStatus>(['DONE', 'SKIPPED', 'MISSED']);
+
+export function sortScheduledExercises<T extends { status: ExerciseStatus; createdAt: Date }>(items: T[]) {
+  return [...items].sort((a, b) => {
+    const aCompleted = completedExerciseStatuses.has(a.status);
+    const bCompleted = completedExerciseStatuses.has(b.status);
+    if (aCompleted !== bCompleted) return aCompleted ? 1 : -1;
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
+}
+
 export async function getScheduledExercises(userId: string, date: string) {
-  return prisma.scheduledExercise.findMany({ where: { userId, scheduledDate: parseDateParam(date) }, include: { exercise: true, log: true } });
+  const items = await prisma.scheduledExercise.findMany({
+    where: { userId, scheduledDate: parseDateParam(date) },
+    include: { exercise: true, log: true },
+    orderBy: { createdAt: 'asc' }
+  });
+  return sortScheduledExercises(items);
+}
+
+export async function ensureExercisesForDate(userId: string, date: string) {
+  const log = await ensureDailyLogByUserId(userId, date);
+  if (!log) return null;
+  return getScheduledExercises(userId, date);
+}
+
+const scheduleFields = {
+  sets: (value: unknown) => (value === null || value === undefined ? null : Number(value)),
+  reps: (value: unknown) => (value === null || value === undefined ? null : Number(value)),
+  durationMinutes: (value: unknown) => (value === null || value === undefined ? null : Number(value)),
+  distance: (value: unknown) => (value === null || value === undefined ? null : value),
+  weight: (value: unknown) => (value === null || value === undefined ? null : value)
+};
+
+export async function createScheduledExercise(
+  userId: string,
+  date: string,
+  data: {
+    exerciseId: string;
+    sets?: number | null;
+    reps?: number | null;
+    durationMinutes?: number | null;
+    distance?: number | null;
+    weight?: number | null;
+    description?: string | null;
+    category?: string | null;
+    bodyPart?: string | null;
+  }
+) {
+  const program = await getActiveProgram(userId);
+  if (!program) throw new Error('No active program found');
+
+  const catalog = await prisma.exercise.findUniqueOrThrow({ where: { id: data.exerciseId } });
+
+  const catalogUpdates: { description?: string | null; category?: string | null; bodyPart?: string | null } = {};
+  if (data.description !== undefined) catalogUpdates.description = data.description?.trim() || null;
+  if (data.category !== undefined) catalogUpdates.category = data.category?.trim() || null;
+  if (data.bodyPart !== undefined) catalogUpdates.bodyPart = data.bodyPart?.trim() || null;
+  if (Object.keys(catalogUpdates).length) {
+    await prisma.exercise.update({ where: { id: data.exerciseId }, data: catalogUpdates });
+  }
+
+  const scheduled = await prisma.scheduledExercise.create({
+    data: {
+      programId: program.id,
+      userId,
+      exerciseId: data.exerciseId,
+      scheduledDate: parseDateParam(date),
+      sets: data.sets ?? catalog.defaultSets,
+      reps: data.reps ?? catalog.defaultReps,
+      durationMinutes: data.durationMinutes ?? catalog.defaultDurationMinutes,
+      distance: data.distance ?? catalog.defaultDistance,
+      weight: data.weight ?? null,
+      status: ExerciseStatus.PLANNED
+    },
+    include: { exercise: true, log: true }
+  });
+
+  await recalculateForDate(userId, date);
+  return scheduled;
+}
+
+export async function updateScheduledExercise(
+  userId: string,
+  id: string,
+  data: Partial<{
+    sets: number | null;
+    reps: number | null;
+    durationMinutes: number | null;
+    distance: number | null;
+    weight: number | null;
+    description: string | null;
+    category: string | null;
+    bodyPart: string | null;
+  }>
+) {
+  const existing = await prisma.scheduledExercise.findFirstOrThrow({ where: { id, userId } });
+
+  const catalogUpdates: { description?: string | null; category?: string | null; bodyPart?: string | null } = {};
+  if (data.description !== undefined) catalogUpdates.description = data.description?.trim() || null;
+  if (data.category !== undefined) catalogUpdates.category = data.category?.trim() || null;
+  if (data.bodyPart !== undefined) catalogUpdates.bodyPart = data.bodyPart?.trim() || null;
+  if (Object.keys(catalogUpdates).length) {
+    await prisma.exercise.update({ where: { id: existing.exerciseId }, data: catalogUpdates });
+  }
+
+  const scheduled = await prisma.scheduledExercise.update({
+    where: { id },
+    data: {
+      ...(data.sets !== undefined ? { sets: scheduleFields.sets(data.sets) } : {}),
+      ...(data.reps !== undefined ? { reps: scheduleFields.reps(data.reps) } : {}),
+      ...(data.durationMinutes !== undefined ? { durationMinutes: scheduleFields.durationMinutes(data.durationMinutes) } : {}),
+      ...(data.distance !== undefined ? { distance: scheduleFields.distance(data.distance) } : {}),
+      ...(data.weight !== undefined ? { weight: scheduleFields.weight(data.weight) } : {})
+    },
+    include: { exercise: true, log: true }
+  });
+  await recalculateForDate(userId, toDateKey(existing.scheduledDate));
+  return scheduled;
+}
+
+export async function deleteScheduledExercise(userId: string, id: string) {
+  const existing = await prisma.scheduledExercise.findFirstOrThrow({ where: { id, userId } });
+  await prisma.scheduledExercise.delete({ where: { id } });
+  await recalculateForDate(userId, toDateKey(existing.scheduledDate));
+  return { ok: true };
+}
+
+async function copyExercisesToDate(
+  userId: string,
+  programId: string,
+  targetDate: Date,
+  sourceExercises: Awaited<ReturnType<typeof getScheduledExercises>>,
+  replace: boolean
+) {
+  if (replace) {
+    await prisma.scheduledExercise.deleteMany({
+      where: { userId, programId, scheduledDate: targetDate }
+    });
+  }
+
+  if (!sourceExercises.length) return [];
+
+  await prisma.scheduledExercise.createMany({
+    data: sourceExercises.map((item) => ({
+      programId,
+      userId,
+      exerciseId: item.exerciseId,
+      scheduledDate: targetDate,
+      sets: item.sets,
+      reps: item.reps,
+      durationMinutes: item.durationMinutes,
+      distance: item.distance,
+      weight: item.weight,
+      status: ExerciseStatus.PLANNED
+    }))
+  });
+
+  return getScheduledExercises(userId, toDateKey(targetDate));
+}
+
+export async function copyExercisesFromDate(
+  userId: string,
+  targetDate: string,
+  sourceDate: string,
+  options: { replace?: boolean } = {}
+) {
+  const program = await getActiveProgram(userId);
+  if (!program) throw new Error('No active program found');
+
+  const source = await getScheduledExercises(userId, sourceDate);
+  if (!source.length) throw new Error(`No exercises found on ${sourceDate}`);
+
+  await ensureDailyLogByUserId(userId, targetDate);
+  const result = await copyExercisesToDate(
+    userId,
+    program.id,
+    parseDateParam(targetDate),
+    source,
+    options.replace ?? true
+  );
+  await recalculateForDate(userId, targetDate);
+  return result;
+}
+
+export async function copyExercisesFromPreviousDay(userId: string, targetDate: string) {
+  const program = await getActiveProgram(userId);
+  if (!program) throw new Error('No active program found');
+
+  const target = parseDateParam(targetDate);
+  const prior = await prisma.scheduledExercise.findFirst({
+    where: { userId, programId: program.id, scheduledDate: { lt: target } },
+    orderBy: { scheduledDate: 'desc' }
+  });
+
+  if (!prior) throw new Error('No prior day with exercises to copy');
+
+  return copyExercisesFromDate(userId, targetDate, toDateKey(prior.scheduledDate), { replace: true });
 }
 
 export async function markScheduledExercise(userId: string, id: string, status: ExerciseStatus) {
-  return prisma.scheduledExercise.update({ where: { id, userId }, data: { status } });
+  const existing = await prisma.scheduledExercise.findFirstOrThrow({ where: { id, userId } });
+  const scheduled = await prisma.scheduledExercise.update({
+    where: { id },
+    data: { status },
+    include: { exercise: true, log: true }
+  });
+  await recalculateForDate(userId, toDateKey(existing.scheduledDate));
+  return scheduled;
 }
 
 export async function markDone(userId: string, id: string) {
   return prisma.$transaction(async (tx) => {
-    const scheduled = await tx.scheduledExercise.update({ where: { id, userId }, data: { status: ExerciseStatus.DONE } });
+    const existing = await tx.scheduledExercise.findFirstOrThrow({ where: { id, userId } });
+    const scheduled = await tx.scheduledExercise.update({
+      where: { id },
+      data: { status: ExerciseStatus.DONE },
+      include: { exercise: true, log: true }
+    });
     await tx.exerciseLog.upsert({
       where: { scheduledExerciseId: id },
       update: { completed: true, completedAt: new Date() },
       create: { scheduledExerciseId: id, userId, completed: true, completedAt: new Date() }
     });
+    const log = await tx.dailyLog.findUnique({
+      where: { userId_date: { userId, date: existing.scheduledDate } }
+    });
+    if (log) await recalculateDailyLogTotals(log.id, tx);
     return scheduled;
   });
 }
