@@ -231,6 +231,7 @@ model MealItem {
   mealId String
   foodId String?
   type MealItemType
+  linkedPlannedItemId String?
   nameSnapshot String
   quantity Decimal @db.Decimal(10, 2)
   unit String
@@ -242,6 +243,8 @@ model MealItem {
   updatedAt DateTime @updatedAt
   meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
   food Food? @relation(fields: [foodId], references: [id])
+  linkedPlannedItem MealItem? @relation("PlannedToActual", fields: [linkedPlannedItemId], references: [id], onDelete: SetNull)
+  derivedActualItems MealItem[] @relation("PlannedToActual")
 }
 
 model Food {

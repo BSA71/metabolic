@@ -1,6 +1,7 @@
 node_modules
 dist
 build
+client/.vite
 .env
 .env.*
 !.env.example
