@@ -20,14 +20,14 @@ export function TodayNutrition({
 
   return (
     <Card>
-      <h2 className="mb-4 text-lg font-bold">Today's Nutrition</h2>
+      <h2 className="mb-4 text-lg font-bold dark:text-white">Today's Nutrition</h2>
       <div className="space-y-3">
         {meals.map((meal) => {
           const expanded = expandedMealId === meal.id;
           const plannedCount = (meal.items ?? []).filter((item) => item.type === 'PLANNED').length;
 
           return (
-            <div key={meal.id} className="overflow-hidden rounded-2xl bg-slate-50">
+            <div key={meal.id} className="overflow-hidden rounded-2xl bg-slate-50 dark:bg-slate-800/50">
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-3 p-3 text-left"
@@ -35,10 +35,10 @@ export function TodayNutrition({
                 aria-expanded={expanded}
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold">
+                  <p className="font-semibold dark:text-white">
                     {meal.mealNumber}. {meal.name}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
                     {Math.round(Number(meal.actualCalories))} / {Math.round(Number(meal.plannedCalories))} kcal
                     {plannedCount > 0 && ` · ${plannedCount} item${plannedCount === 1 ? '' : 's'}`}
                   </p>
