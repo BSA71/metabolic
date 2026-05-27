@@ -22,9 +22,9 @@ async function main() {
   await prisma.user.deleteMany();
 
   const admin = await prisma.user.create({ data: { firebaseUid: 'seed-super-admin', email: 'admin@metabolic.local', firstName: 'Metabolic', lastName: 'Admin', phone: '+15550000001', role: Role.SUPER_ADMIN, status: UserStatus.ACTIVE } });
-  const user = await prisma.user.create({ data: { firebaseUid: 'seed-user', email: 'user@metabolic.local', firstName: 'Jordan', lastName: 'Rivera', phone: '+15550000002', role: Role.USER, status: UserStatus.ACTIVE } });
+  const user = await prisma.user.create({ data: { firebaseUid: 'seed-user', email: 'user@metabolic.local', firstName: 'Jordan', lastName: 'Rivera', phone: '+15550000002', role: Role.ADMIN, status: UserStatus.ACTIVE } });
   const org = await prisma.organization.create({ data: { name: 'Metabolic HQ' } });
-  await prisma.userOrganization.createMany({ data: [{ userId: admin.id, organizationId: org.id, role: Role.SUPER_ADMIN }, { userId: user.id, organizationId: org.id, role: Role.USER }] });
+  await prisma.userOrganization.createMany({ data: [{ userId: admin.id, organizationId: org.id, role: Role.SUPER_ADMIN }, { userId: user.id, organizationId: org.id, role: Role.ADMIN }] });
 
   const foods = await Promise.all([
     ['Chicken breast', 6, 'oz', 280, 52, 0, 6, ['grilled chicken', 'chicken'] ],
@@ -76,8 +76,8 @@ async function main() {
 
   const exercises = await Promise.all([
     prisma.exercise.create({ data: { name: 'Morning walk', category: 'Cardio', defaultDurationMinutes: 30 } }),
-    prisma.exercise.create({ data: { name: 'Goblet squat', category: 'Strength', defaultSets: 3, defaultReps: 10 } }),
-    prisma.exercise.create({ data: { name: 'Push-up', category: 'Strength', defaultSets: 3, defaultReps: 8 } }),
+    prisma.exercise.create({ data: { name: 'Goblet squat', category: 'Strength', bodyPart: 'Legs', defaultSets: 3, defaultReps: 10 } }),
+    prisma.exercise.create({ data: { name: 'Push-up', category: 'Strength', bodyPart: 'Chest', defaultSets: 3, defaultReps: 8 } }),
     prisma.exercise.create({ data: { name: 'Mobility flow', category: 'Recovery', defaultDurationMinutes: 15 } })
   ]);
   for (const [index, exercise] of exercises.entries()) {

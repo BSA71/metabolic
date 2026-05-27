@@ -1,13 +1,14 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { MealStatus } from '@prisma/client';
+import { MealItemType, MealStatus } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { n, round } from '../utils/numbers.js';
 
 type PrismaExecutor = PrismaClient | Prisma.TransactionClient;
 
-export async function recalculateMealTotals(mealId: string, tx: PrismaExecutor = prisma) {
-  const items = await tx.mealItem.findMany({ where: { mealId, type: 'ACTUAL' } });
-  const totals = items.reduce(
+type MacroTotals = { calories: number; protein: number; carbs: number; fat: number };
+
+function sumItems(items: { calories: unknown; protein: unknown; carbs: unknown; fat: unknown }[]): MacroTotals {
+  return items.reduce<MacroTotals>(
     (sum, item) => ({
       calories: sum.calories + n(item.calories),
       protein: sum.protein + n(item.protein),
@@ -16,14 +17,26 @@ export async function recalculateMealTotals(mealId: string, tx: PrismaExecutor =
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
+}
+
+export async function recalculateMealTotals(mealId: string, tx: PrismaExecutor = prisma) {
+  const items = await tx.mealItem.findMany({ where: { mealId } });
+  const planned = sumItems(items.filter((item) => item.type === MealItemType.PLANNED));
+  const actualItems = items.filter((item) => item.type === MealItemType.ACTUAL);
+  const actual = sumItems(actualItems);
+
   return tx.meal.update({
     where: { id: mealId },
     data: {
-      actualCalories: totals.calories,
-      actualProtein: totals.protein,
-      actualCarbs: totals.carbs,
-      actualFat: totals.fat,
-      status: items.length ? MealStatus.MODIFIED : undefined
+      plannedCalories: planned.calories,
+      plannedProtein: planned.protein,
+      plannedCarbs: planned.carbs,
+      plannedFat: planned.fat,
+      actualCalories: actual.calories,
+      actualProtein: actual.protein,
+      actualCarbs: actual.carbs,
+      actualFat: actual.fat,
+      status: actualItems.length ? MealStatus.MODIFIED : undefined
     }
   });
 }

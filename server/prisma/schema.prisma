@@ -102,6 +102,7 @@ model User {
   scheduledExercises ScheduledExercise[]
   exerciseLogs ExerciseLog[]
   aiFoodLookups AiFoodLookup[]
+  aiExerciseLookups AiExerciseLookup[]
   smsMessages SmsMessage[]
   coachAssignments CoachAssignment[] @relation("CoachAssignments")
   userAssignments CoachAssignment[] @relation("UserAssignments")
@@ -155,6 +156,7 @@ model Program {
   organization Organization? @relation(fields: [organizationId], references: [id])
   coach User? @relation("ProgramCoach", fields: [coachId], references: [id])
   metrics ProgramMetric[]
+  metricSnapshots ProgramMetricSnapshot[]
   dailyLogs DailyLog[]
   scheduledExercises ScheduledExercise[]
 }
@@ -171,6 +173,27 @@ model ProgramMetric {
   updatedAt DateTime @updatedAt
   program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
   @@unique([programId, metricType])
+}
+
+model ProgramMetricSnapshot {
+  id String @id @default(cuid())
+  programId String
+  date DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  values ProgramMetricSnapshotValue[]
+  @@unique([programId, date])
+}
+
+model ProgramMetricSnapshotValue {
+  id String @id @default(cuid())
+  snapshotId String
+  metricType MetricType
+  currentValue Decimal @db.Decimal(10, 2)
+  unit String
+  snapshot ProgramMetricSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  @@unique([snapshotId, metricType])
 }
 
 model DailyLog {
@@ -231,6 +254,7 @@ model MealItem {
   mealId String
   foodId String?
   type MealItemType
+  linkedPlannedItemId String?
   nameSnapshot String
   quantity Decimal @db.Decimal(10, 2)
   unit String
@@ -242,6 +266,8 @@ model MealItem {
   updatedAt DateTime @updatedAt
   meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
   food Food? @relation(fields: [foodId], references: [id])
+  linkedPlannedItem MealItem? @relation("PlannedToActual", fields: [linkedPlannedItemId], references: [id], onDelete: SetNull)
+  derivedActualItems MealItem[] @relation("PlannedToActual")
 }
 
 model Food {
@@ -286,6 +312,7 @@ model Exercise {
   id String @id @default(cuid())
   name String
   category String?
+  bodyPart String?
   description String?
   defaultSets Int?
   defaultReps Int?
@@ -294,6 +321,7 @@ model Exercise {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   scheduledExercises ScheduledExercise[]
+  aiLookups AiExerciseLookup[]
 }
 
 model ScheduledExercise {
@@ -350,6 +378,25 @@ model AiFoodLookup {
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   food Food? @relation(fields: [foodId], references: [id])
+}
+
+model AiExerciseLookup {
+  id String @id @default(cuid())
+  userId String
+  inputText String
+  name String
+  description String?
+  category String?
+  bodyPart String?
+  defaultSets Int?
+  defaultReps Int?
+  defaultDurationMinutes Int?
+  confidence Decimal? @db.Decimal(5, 2)
+  accepted Boolean @default(false)
+  exerciseId String?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise? @relation(fields: [exerciseId], references: [id])
 }
 
 model SmsMessage {

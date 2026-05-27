@@ -15,7 +15,9 @@ export async function resolveAppUser(firebaseUser: DecodedIdToken): Promise<User
   if (byUid) return byUid;
 
   if (firebaseUser.email) {
-    const byEmail = await prisma.user.findUnique({ where: { email: firebaseUser.email } });
+    const byEmail = await prisma.user.findFirst({
+      where: { email: { equals: firebaseUser.email, mode: 'insensitive' } }
+    });
     if (byEmail) {
       if (byEmail.firebaseUid.startsWith("seed-")) {
         return prisma.user.update({
@@ -36,7 +38,7 @@ export async function resolveAppUser(firebaseUser: DecodedIdToken): Promise<User
     return await prisma.user.create({
       data: {
         firebaseUid: firebaseUser.uid,
-        email: firebaseUser.email,
+        email: firebaseUser.email.toLowerCase(),
         firstName,
         lastName,
         role: "USER",

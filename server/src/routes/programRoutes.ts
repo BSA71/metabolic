@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/requireAuth.js';
-import { activateProgram, getProgram, listPrograms, updateProgramMetrics } from '../services/programService.js';
+import { activateProgram, getProgram, listPrograms, listProgramMetricSnapshots, saveProgramMetricSnapshot, updateProgramMetricSnapshot, updateProgramMetrics } from '../services/programService.js';
 import { prisma } from '../db/prisma.js';
 
 const programBody = z.object({ name: z.string().min(1), startDate: z.string(), targetEndDate: z.string().optional().nullable() });
@@ -13,6 +13,25 @@ const metricUpdateBody = z.array(
     goalValue: z.number().finite()
   })
 );
+const snapshotBody = z.array(
+  z.object({
+    metricType: z.string().min(1),
+    currentValue: z.number().finite(),
+    unit: z.string().min(1)
+  })
+);
+
+function serializeSnapshot(snapshot: Awaited<ReturnType<typeof listProgramMetricSnapshots>>[number]) {
+  return {
+    id: snapshot.id,
+    date: snapshot.date.toISOString().slice(0, 10),
+    values: snapshot.values.map((value) => ({
+      metricType: value.metricType,
+      currentValue: Number(value.currentValue),
+      unit: value.unit
+    }))
+  };
+}
 
 export async function programRoutes(app: FastifyInstance) {
   app.get('/api/programs', { preHandler: requireAuth }, async (request) => listPrograms(request.appUser!));
@@ -28,6 +47,47 @@ export async function programRoutes(app: FastifyInstance) {
     } catch (error) {
       request.log.error({ err: error }, 'Failed to update program metrics');
       return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update metrics' });
+    }
+  });
+
+  app.get('/api/programs/:id/metric-snapshots', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const snapshots = await listProgramMetricSnapshots(request.appUser!, id);
+      return snapshots.map(serializeSnapshot);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to list metric snapshots');
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to list metric snapshots' });
+    }
+  });
+
+  app.post('/api/programs/:id/metric-snapshots', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = snapshotBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Invalid snapshot values. Use valid numbers for each metric.' });
+    }
+    try {
+      const snapshot = await saveProgramMetricSnapshot(request.appUser!, id, parsed.data);
+      return serializeSnapshot(snapshot);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to save metric snapshot');
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to save metric snapshot' });
+    }
+  });
+
+  app.patch('/api/programs/:id/metric-snapshots/:snapshotId', { preHandler: requireAuth }, async (request, reply) => {
+    const { id, snapshotId } = request.params as { id: string; snapshotId: string };
+    const parsed = snapshotBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Invalid snapshot values. Use valid numbers for each metric.' });
+    }
+    try {
+      const snapshot = await updateProgramMetricSnapshot(request.appUser!, id, snapshotId, parsed.data);
+      return serializeSnapshot(snapshot);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to update metric snapshot');
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update metric snapshot' });
     }
   });
 
