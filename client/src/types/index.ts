@@ -1,6 +1,23 @@
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'COACH' | 'USER' | 'VIEWER';
+export type UserStatus = 'ACTIVE' | 'INVITED' | 'DISABLED';
 export type AppUser = { id: string; email: string; firstName: string; lastName: string; role: Role; phone?: string };
+export type AdminUser = AppUser & { status: UserStatus; createdAt: string };
 export type Food = { id: string; name: string; servingSize: number; servingUnit: string; calories: number; protein: number; carbs: number; fat: number; brand?: string };
+export type FoodSource = 'MANUAL' | 'AI' | 'IMPORTED' | 'VERIFIED';
+export type FoodVisibility = 'GLOBAL' | 'USER';
+export type AdminFood = Food & {
+  source: FoodSource;
+  visibility: FoodVisibility;
+  aiGenerated: boolean;
+  verified: boolean;
+  createdAt: string;
+  brand?: string | null;
+};
+export type ReviewFood = AdminFood & {
+  inputText: string | null;
+  confidence: number | null;
+  createdBy: Pick<AppUser, 'id' | 'firstName' | 'lastName' | 'email'> | null;
+};
 export type MealItem = { id: string; type: 'PLANNED' | 'ACTUAL'; linkedPlannedItemId?: string | null; foodId?: string | null; nameSnapshot: string; quantity: number; unit: string; calories: number; protein: number; carbs: number; fat: number };
 export type Meal = { id: string; mealNumber: number; name: string; plannedTime?: string; status: string; plannedCalories: number; plannedProtein: number; plannedCarbs: number; plannedFat: number; actualCalories: number; actualProtein: number; actualCarbs: number; actualFat: number; items: MealItem[] };
 export type ExerciseCatalogItem = {
@@ -41,5 +58,7 @@ export type ScheduledExercise = {
 /** @deprecated Use ScheduledExercise — kept for dashboard compatibility */
 export type Exercise = ScheduledExercise;
 export type ProgramMetric = { id: string; metricType: string; startValue: number; currentValue: number; goalValue: number; unit: string };
+export type ProgramMetricSnapshotValue = { metricType: string; currentValue: number; unit: string };
+export type ProgramMetricSnapshot = { id: string; date: string; values: ProgramMetricSnapshotValue[] };
 export type Program = { id: string; name: string; status: string; startDate: string; targetEndDate?: string; metrics: ProgramMetric[] };
 export type Dashboard = { program: Program | null; dailyLog: any; meals: Meal[]; exercises: Exercise[]; summary: { currentWeight: number; caloriesRemaining: number; proteinRemaining: number; nextMeal: string; exercisesLeft: number; goalProgress: number } | null; weightTrend: { date: string; weight: number }[] };
