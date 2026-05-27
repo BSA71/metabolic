@@ -73,6 +73,39 @@ export async function saveProgramMetricSnapshot(
   });
 }
 
+export async function updateProgramMetricSnapshot(
+  user: { id: string; role: Role },
+  programId: string,
+  snapshotId: string,
+  values: SnapshotValueInput[]
+) {
+  const program = await getProgram(user, programId);
+  if (!program) throw new Error('Program not found');
+
+  const snapshot = await prisma.programMetricSnapshot.findFirst({
+    where: { id: snapshotId, programId }
+  });
+  if (!snapshot) throw new Error('Snapshot not found');
+
+  return prisma.$transaction(async (tx) => {
+    await tx.programMetricSnapshotValue.deleteMany({ where: { snapshotId } });
+    await tx.programMetricSnapshotValue.createMany({
+      data: values.map((value) => ({
+        snapshotId,
+        metricType: value.metricType as never,
+        currentValue: value.currentValue,
+        unit: value.unit
+      }))
+    });
+
+    return tx.programMetricSnapshot.update({
+      where: { id: snapshotId },
+      data: { updatedAt: new Date() },
+      include: { values: true }
+    });
+  });
+}
+
 export async function updateProgramMetrics(
   user: { id: string; role: Role },
   programId: string,
