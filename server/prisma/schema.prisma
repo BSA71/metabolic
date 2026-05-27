@@ -156,6 +156,7 @@ model Program {
   organization Organization? @relation(fields: [organizationId], references: [id])
   coach User? @relation("ProgramCoach", fields: [coachId], references: [id])
   metrics ProgramMetric[]
+  metricSnapshots ProgramMetricSnapshot[]
   dailyLogs DailyLog[]
   scheduledExercises ScheduledExercise[]
 }
@@ -172,6 +173,27 @@ model ProgramMetric {
   updatedAt DateTime @updatedAt
   program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
   @@unique([programId, metricType])
+}
+
+model ProgramMetricSnapshot {
+  id String @id @default(cuid())
+  programId String
+  date DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  values ProgramMetricSnapshotValue[]
+  @@unique([programId, date])
+}
+
+model ProgramMetricSnapshotValue {
+  id String @id @default(cuid())
+  snapshotId String
+  metricType MetricType
+  currentValue Decimal @db.Decimal(10, 2)
+  unit String
+  snapshot ProgramMetricSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  @@unique([snapshotId, metricType])
 }
 
 model DailyLog {

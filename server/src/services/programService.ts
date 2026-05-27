@@ -23,6 +23,56 @@ export async function activateProgram(userId: string, id: string) {
 
 type MetricUpdate = { id: string; startValue?: number; currentValue?: number; goalValue?: number };
 
+type SnapshotValueInput = { metricType: string; currentValue: number; unit: string };
+
+export async function listProgramMetricSnapshots(
+  user: { id: string; role: Role },
+  programId: string
+) {
+  const program = await getProgram(user, programId);
+  if (!program) throw new Error('Program not found');
+
+  return prisma.programMetricSnapshot.findMany({
+    where: { programId },
+    include: { values: true },
+    orderBy: { date: 'desc' }
+  });
+}
+
+export async function saveProgramMetricSnapshot(
+  user: { id: string; role: Role },
+  programId: string,
+  values: SnapshotValueInput[]
+) {
+  const program = await getProgram(user, programId);
+  if (!program) throw new Error('Program not found');
+
+  const date = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
+
+  return prisma.$transaction(async (tx) => {
+    const snapshot = await tx.programMetricSnapshot.upsert({
+      where: { programId_date: { programId, date } },
+      create: { programId, date },
+      update: { updatedAt: new Date() }
+    });
+
+    await tx.programMetricSnapshotValue.deleteMany({ where: { snapshotId: snapshot.id } });
+    await tx.programMetricSnapshotValue.createMany({
+      data: values.map((value) => ({
+        snapshotId: snapshot.id,
+        metricType: value.metricType as never,
+        currentValue: value.currentValue,
+        unit: value.unit
+      }))
+    });
+
+    return tx.programMetricSnapshot.findUniqueOrThrow({
+      where: { id: snapshot.id },
+      include: { values: true }
+    });
+  });
+}
+
 export async function updateProgramMetrics(
   user: { id: string; role: Role },
   programId: string,

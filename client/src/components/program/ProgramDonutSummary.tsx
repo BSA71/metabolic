@@ -40,7 +40,13 @@ function Ring({
   );
 }
 
-export function ProgramDonutSummary({ metrics }: { metrics: ProgramMetric[] }) {
+export function ProgramDonutSummary({
+  metrics,
+  currentLabel = 'Current'
+}: {
+  metrics: ProgramMetric[];
+  currentLabel?: string;
+}) {
   const weight = metrics.find((metric) => metric.metricType === 'WEIGHT');
   const bodyFat = metrics.find((metric) => metric.metricType === 'BODY_FAT');
   const startWeight = Number(weight?.startValue ?? 0);
@@ -55,7 +61,7 @@ export function ProgramDonutSummary({ metrics }: { metrics: ProgramMetric[] }) {
       <h2 className="mb-5 text-lg font-bold">Program Snapshot</h2>
       <div className="grid gap-5 sm:grid-cols-3">
         <Ring label="Start of Program" value={startWeight} centerPercent={startBodyFat} ringFillPercent={startBodyFat} color="#eab308" />
-        <Ring label="Current" value={currentWeight} centerPercent={currentBodyFat} ringFillPercent={currentBodyFat} color="#3b82f6" />
+        <Ring label={currentLabel} value={currentWeight} centerPercent={currentBodyFat} ringFillPercent={currentBodyFat} color="#3b82f6" />
         <Ring label="Goal" value={goalWeight} centerPercent={goalBodyFat} ringFillPercent={goalBodyFat} color="#ef4444" />
       </div>
     </Card>

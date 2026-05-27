@@ -1,60 +1,54 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api';
-import type { ReviewFood } from '../../types';
+import type { AdminFood } from '../../types';
 import { Card } from '../ui/Card';
-import { ReviewFoodDrawer } from './ReviewFoodDrawer';
+import { EditFoodDrawer } from './EditFoodDrawer';
 
-function formatServing(food: ReviewFood) {
+function formatServing(food: AdminFood) {
   return `${Number(food.servingSize)} ${food.servingUnit}`;
 }
 
-function formatMacros(food: ReviewFood) {
+function formatMacros(food: AdminFood) {
   return `${Number(food.protein)}P / ${Number(food.carbs)}C / ${Number(food.fat)}F`;
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
+function badgeClass(kind: 'verified' | 'ai' | 'global' | 'user') {
+  if (kind === 'verified') return 'bg-emerald-50 text-emerald-700';
+  if (kind === 'ai') return 'bg-violet-50 text-violet-700';
+  if (kind === 'global') return 'bg-blue-50 text-blue-700';
+  return 'bg-slate-100 text-slate-600';
 }
 
-export function FoodReviewQueue() {
-  const [foods, setFoods] = useState<ReviewFood[]>([]);
+export function FoodTable() {
+  const [foods, setFoods] = useState<AdminFood[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedFoodId, setSelectedFoodId] = useState<string | null>(null);
 
   const selectedFood = foods.find((food) => food.id === selectedFoodId);
 
-  const loadQueue = useCallback(async () => {
+  const loadFoods = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const rows = await api<ReviewFood[]>('/api/admin/food-review');
+      const rows = await api<AdminFood[]>('/api/admin/foods');
       setFoods(rows);
       setSelectedFoodId((current) => (current && rows.some((food) => food.id === current) ? current : null));
     } catch (err) {
       setFoods([]);
       setSelectedFoodId(null);
-      setError(err instanceof Error ? err.message : 'Unable to load review queue');
+      setError(err instanceof Error ? err.message : 'Unable to load foods');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadQueue();
-  }, [loadQueue]);
+    void loadFoods();
+  }, [loadFoods]);
 
-  function handleSaved(updated: ReviewFood) {
+  function handleSaved(updated: AdminFood) {
     setFoods((current) => current.map((food) => (food.id === updated.id ? updated : food)));
-  }
-
-  function handleResolved(foodId: string) {
-    setFoods((current) => current.filter((food) => food.id !== foodId));
-    setSelectedFoodId(null);
   }
 
   return (
@@ -62,35 +56,30 @@ export function FoodReviewQueue() {
       <Card>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">AI Review Queue</h2>
-            <p className="text-sm text-slate-500">Click a row to review, edit, approve, or reject AI-generated foods.</p>
+            <h2 className="text-lg font-bold">Food Database</h2>
+            <p className="text-sm text-slate-500">Click a row to edit food details.</p>
           </div>
-          <span className="text-sm text-slate-500">{foods.length} pending</span>
+          <span className="text-sm text-slate-500">{foods.length} total</span>
         </div>
 
-        {loading && <p className="text-sm text-slate-500">Loading review queue...</p>}
+        {loading && <p className="text-sm text-slate-500">Loading foods...</p>}
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             <p>{error}</p>
           </div>
         )}
 
-        {!loading && !error && foods.length === 0 && (
-          <p className="py-6 text-center text-sm text-slate-500">No AI-generated foods are waiting for review.</p>
-        )}
-
-        {!loading && !error && foods.length > 0 && (
+        {!loading && !error && (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
                   <th className="py-3 pr-4 font-medium">Food</th>
-                  <th className="py-3 pr-4 font-medium">Original prompt</th>
                   <th className="py-3 pr-4 font-medium">Serving</th>
                   <th className="py-3 pr-4 font-medium">Calories</th>
                   <th className="py-3 pr-4 font-medium">Macros</th>
-                  <th className="py-3 pr-4 font-medium">Submitted by</th>
-                  <th className="py-3 font-medium">Submitted</th>
+                  <th className="py-3 pr-4 font-medium">Source</th>
+                  <th className="py-3 font-medium">Flags</th>
                 </tr>
               </thead>
               <tbody>
@@ -115,32 +104,42 @@ export function FoodReviewQueue() {
                         <div className="font-semibold">{food.name}</div>
                         {food.brand && <div className="text-slate-500">{food.brand}</div>}
                       </td>
-                      <td className="max-w-xs py-3 pr-4 text-slate-600">
-                        <span className="line-clamp-2">{food.inputText ?? '—'}</span>
-                      </td>
                       <td className="py-3 pr-4 text-slate-600">{formatServing(food)}</td>
                       <td className="py-3 pr-4 text-slate-600">{Math.round(Number(food.calories))}</td>
                       <td className="py-3 pr-4 text-slate-600">{formatMacros(food)}</td>
-                      <td className="py-3 pr-4 text-slate-600">
-                        {food.createdBy ? `${food.createdBy.firstName} ${food.createdBy.lastName}` : '—'}
+                      <td className="py-3 pr-4 text-slate-600">{food.source}</td>
+                      <td className="py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass(food.visibility === 'GLOBAL' ? 'global' : 'user')}`}>
+                            {food.visibility}
+                          </span>
+                          {food.verified && (
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass('verified')}`}>
+                              Verified
+                            </span>
+                          )}
+                          {food.aiGenerated && (
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass('ai')}`}>
+                              AI
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="py-3 text-slate-600">{formatDate(food.createdAt)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+            {foods.length === 0 && <p className="py-6 text-center text-sm text-slate-500">No foods found.</p>}
           </div>
         )}
       </Card>
 
-      <ReviewFoodDrawer
+      <EditFoodDrawer
         open={Boolean(selectedFood)}
         food={selectedFood}
         onClose={() => setSelectedFoodId(null)}
-        onApproved={() => selectedFood && handleResolved(selectedFood.id)}
         onSaved={handleSaved}
-        onRejected={() => selectedFood && handleResolved(selectedFood.id)}
       />
     </>
   );

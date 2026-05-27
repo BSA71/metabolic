@@ -1,5 +1,6 @@
 import type { ProgramMetric } from '../../types';
 import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
 
 export type MetricField = 'startValue' | 'currentValue' | 'goalValue';
 export type MetricEditTarget = { id: string; field: MetricField };
@@ -9,6 +10,9 @@ type Props = {
   editing: MetricEditTarget | null;
   onStartEdit: (target: MetricEditTarget) => void;
   onChange: (id: string, field: MetricField, value: number) => void;
+  onSaveSnapshot: () => void;
+  savingSnapshot: boolean;
+  todaySnapshotSaved: boolean;
 };
 
 const rowGridClass = 'grid grid-cols-[minmax(0,11rem)_1fr_1fr_1fr] gap-x-6 sm:gap-x-10';
@@ -58,11 +62,26 @@ function MetricCell({ metric, field, unit, editing, onStartEdit, onChange, class
   );
 }
 
-export function ProgramMetricTable({ metrics, editing, onStartEdit, onChange }: Props) {
+export function ProgramMetricTable({
+  metrics,
+  editing,
+  onStartEdit,
+  onChange,
+  onSaveSnapshot,
+  savingSnapshot,
+  todaySnapshotSaved
+}: Props) {
   return (
     <Card>
-      <h2 className="mb-1 text-lg font-bold">Metric Comparison</h2>
-      <p className="mb-4 text-sm text-slate-500">Click any number to edit. Save changes from the button at the bottom right.</p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="mb-1 text-lg font-bold">Metric Comparison</h2>
+          <p className="text-sm text-slate-500">Click any number to edit. Save changes from the button at the bottom right.</p>
+        </div>
+        <Button variant="secondary" disabled={savingSnapshot} onClick={onSaveSnapshot}>
+          {savingSnapshot ? 'Saving snapshot...' : todaySnapshotSaved ? "Update today's snapshot" : "Save today's snapshot"}
+        </Button>
+      </div>
       <div className="w-full text-lg">
         <div className={`${rowGridClass} text-slate-500`}>
           <div className="py-2">Metric</div>
