@@ -2,17 +2,58 @@
 
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #0f172a;
-  background: #f8fafc;
+
+  --brand-yellow: #f9c80e;
+  --brand-amber: #d99e2b;
+  --brand-foreground: #1a1d24;
+
+  --app-bg: #f4f5f7;
+  --app-surface: #ffffff;
+  --app-muted: #eceef2;
+  --app-border: #d8dce3;
+  --app-text: #1e2128;
+  --app-text-muted: #5c6370;
+  --app-chart-line: #1e2128;
+  --app-progress-track: #e8eaef;
+
+  color: var(--app-text);
+  background: var(--app-bg);
+}
+
+.dark {
+  --app-bg: #3c404b;
+  --app-surface: #464b57;
+  --app-muted: #525866;
+  --app-border: #5a6070;
+  --app-text: #f4f5f7;
+  --app-text-muted: #b0b3b8;
+  --app-chart-line: #f9c80e;
+  --app-progress-track: #525866;
+}
+
+@theme inline {
+  --color-brand: var(--brand-yellow);
+  --color-brand-deep: var(--brand-amber);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-app-bg: var(--app-bg);
+  --color-app-surface: var(--app-surface);
+  --color-app-muted: var(--app-muted);
+  --color-app-border: var(--app-border);
+  --color-app-text: var(--app-text);
+  --color-app-text-muted: var(--app-text-muted);
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: var(--app-bg);
+  color: var(--app-text);
 }
 
-button, input, textarea {
+button,
+input,
+textarea {
   font: inherit;
 }
 

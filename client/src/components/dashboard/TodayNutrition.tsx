@@ -27,7 +27,7 @@ export function TodayNutrition({
           const plannedCount = (meal.items ?? []).filter((item) => item.type === 'PLANNED').length;
 
           return (
-            <div key={meal.id} className="overflow-hidden rounded-2xl bg-slate-50">
+            <div key={meal.id} className="overflow-hidden rounded-2xl bg-app-muted">
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-3 p-3 text-left"
@@ -38,7 +38,7 @@ export function TodayNutrition({
                   <p className="font-semibold">
                     {meal.mealNumber}. {meal.name}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-app-text-muted">
                     {Math.round(Number(meal.actualCalories))} / {Math.round(Number(meal.plannedCalories))} kcal
                     {plannedCount > 0 && ` · ${plannedCount} item${plannedCount === 1 ? '' : 's'}`}
                   </p>
@@ -49,7 +49,7 @@ export function TodayNutrition({
                   </Badge>
                   <ChevronDown
                     size={18}
-                    className={`text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                    className={`text-app-text-muted transition-transform ${expanded ? 'rotate-180' : ''}`}
                   />
                 </div>
               </button>
