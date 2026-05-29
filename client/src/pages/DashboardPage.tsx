@@ -47,7 +47,7 @@ export function DashboardPage() {
     void loadDashboard();
   }, [loadDashboard]);
 
-  if (loading) return <p>Loading dashboard...</p>;
+  if (loading) return <p className="text-app-text-muted">Loading dashboard...</p>;
   if (error) {
     return (
       <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-red-900">
@@ -76,7 +76,7 @@ export function DashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Today Dashboard</h1>
-          <p className="text-slate-500">Planned vs actual, centered around what to do next.</p>
+          <p className="text-app-text-muted">Planned vs actual, centered around what to do next.</p>
         </div>
         <Button className="flex items-center gap-2">
           <Bot size={18} />
@@ -97,9 +97,9 @@ export function DashboardPage() {
         <MacroProgress dashboard={data} />
         <WeightTrendChart data={data.weightTrend} />
       </section>
-      <section className="rounded-3xl border border-dashed border-slate-300 bg-white p-5">
+      <section className="rounded-3xl border border-dashed border-app-border bg-app-surface p-5">
         <h2 className="text-lg font-bold">Quick Log</h2>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-app-text-muted">
           Use Nutrition to log meals or the AI drawer to estimate foods. SMS commands are also supported by the backend webhook.
         </p>
       </section>

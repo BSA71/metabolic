@@ -33,4 +33,65 @@ Features:
 
 Local Docker Postgres is exposed on host port `5433` to avoid conflicts with an existing local PostgreSQL service. Inside Docker it still uses port `5432`.
 
-No deployment is performed by this repo. The server listens on `PORT` and includes a Dockerfile so it can be adapted for Cloud Run later.
+## Deploy to GCP (metabolic-v1)
+
+Prerequisites: `gcloud auth login`, `gcloud auth application-default login`, `firebase login`, Blaze billing enabled.
+
+### 1. One-time infrastructure
+
+```bash
+export METABOLIC_DB_PASSWORD="$(openssl rand -base64 24)"
+chmod +x scripts/gcp-setup.sh scripts/gcp-deploy.sh
+./scripts/gcp-setup.sh
+```
+
+Add Firebase Admin + app secrets to Secret Manager (service account JSON from Firebase Console → Project settings → Service accounts):
+
+```bash
+# FIREBASE_PRIVATE_KEY: paste the private_key field from the JSON (keep newlines)
+gcloud secrets create FIREBASE_PRIVATE_KEY --data-file=-
+gcloud secrets create FIREBASE_CLIENT_EMAIL --data-file=-
+echo -n metabolic-v1 | gcloud secrets create FIREBASE_PROJECT_ID --data-file=-
+echo -n YOUR_GEMINI_KEY | gcloud secrets create GEMINI_API_KEY --data-file=-
+echo -n https://metabolic-v1.web.app | gcloud secrets create CLIENT_URL --data-file=-
+```
+
+Grant the Cloud Run service account access after first deploy:
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe metabolic-v1 --format='value(projectNumber)')
+SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+for s in DATABASE_URL FIREBASE_PRIVATE_KEY FIREBASE_CLIENT_EMAIL FIREBASE_PROJECT_ID GEMINI_API_KEY CLIENT_URL; do
+  gcloud secrets add-iam-policy-binding "$s" \
+    --member="serviceAccount:${SA}" \
+    --role="roles/secretmanager.secretAccessor"
+done
+gcloud projects add-iam-policy-binding metabolic-v1 \
+  --member="serviceAccount:${SA}" \
+  --role="roles/cloudsql.client"
+```
+
+In Firebase Console: enable Email/Password (+ Google) auth; add `metabolic-v1.web.app` to Authorized domains.
+
+### 2. Deploy app
+
+```bash
+cp client/.env.production.example client/.env.production
+# Set VITE_API_URL after first deploy, or update after ./scripts/gcp-deploy.sh prints the URL
+./scripts/gcp-deploy.sh
+```
+
+The API runs migrations on startup via `server/docker-entrypoint.sh`. Health check: `GET /health`.
+
+### Copy local database to Cloud SQL
+
+Requires local Docker Postgres running and `cloud-sql-proxy` installed.
+
+```bash
+export METABOLIC_DB_PASSWORD='your-cloud-sql-password'
+./scripts/copy-local-db-to-cloud.sh
+```
+
+This replaces production app data with your local database (users, foods, programs, meals, etc.) while keeping Prisma migrations intact.
+
+No deployment is performed automatically by CI. The server listens on `PORT` and includes a Dockerfile for Cloud Run.
