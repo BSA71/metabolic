@@ -10,6 +10,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/server/node_modules ./server/node_modules
 COPY server ./server
 WORKDIR /app/server
+RUN npx prisma generate
 RUN npm run build
 
 FROM node:20-alpine
@@ -17,6 +18,10 @@ WORKDIR /app/server
 ENV NODE_ENV=production
 COPY --from=build /app/server/dist ./dist
 COPY --from=build /app/server/package.json ./package.json
-COPY --from=deps /app/server/node_modules ./node_modules
+COPY --from=build /app/server/prisma ./prisma
+COPY --from=build /app/node_modules /app/node_modules
+COPY --from=build /app/server/node_modules ./node_modules
+COPY server/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x docker-entrypoint.sh
 EXPOSE 8080
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
