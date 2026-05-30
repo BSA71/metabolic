@@ -7,9 +7,11 @@ REGION="${REGION:-us-central1}"
 SQL_INSTANCE="${SQL_INSTANCE:-metabolic-db}"
 AR_REPO="${AR_REPO:-metabolic}"
 SERVICE_NAME="${SERVICE_NAME:-metabolic-api}"
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/api:latest"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/api:${IMAGE_TAG}"
 CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CI="${CI:-false}"
 
 cd "$ROOT_DIR"
 gcloud config set project "$PROJECT_ID"
@@ -51,7 +53,18 @@ CLIENT_URL=CLIENT_URL:latest" \
 API_URL="$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --format='value(status.url)')"
 echo "API URL: $API_URL"
 
-if [[ ! -f client/.env.production ]]; then
+has_client_env=false
+if [[ -n "${VITE_FIREBASE_API_KEY:-}" ]]; then
+  has_client_env=true
+elif [[ -f client/.env.production ]]; then
+  has_client_env=true
+fi
+
+if [[ "$has_client_env" == "false" ]]; then
+  if [[ "$CI" == "true" ]]; then
+    echo "Missing VITE_* secrets for client build in CI."
+    exit 1
+  fi
   echo ""
   echo "Create client/.env.production with VITE_API_URL and VITE_FIREBASE_* values, then re-run."
   echo "  VITE_API_URL=$API_URL"
@@ -59,14 +72,17 @@ if [[ ! -f client/.env.production ]]; then
 fi
 
 echo "==> Build client"
-set -a
-# shellcheck disable=SC1091
-source client/.env.production
-set +a
+if [[ -f client/.env.production ]] && [[ -z "${VITE_FIREBASE_API_KEY:-}" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source client/.env.production
+  set +a
+fi
+
 npm run build --workspace client
 
 echo "==> Deploy Firebase Hosting"
-firebase deploy --only hosting --project "$PROJECT_ID"
+npx --yes firebase-tools@13 deploy --only hosting --project "$PROJECT_ID"
 
 echo ""
 echo "Deployed."
