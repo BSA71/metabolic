@@ -13,30 +13,37 @@ import { aiRoutes } from './routes/aiRoutes.js';
 import { smsRoutes } from './routes/smsRoutes.js';
 import { adminRoutes } from './routes/adminRoutes.js';
 
-const app = Fastify({ logger: true });
+async function main() {
+  const app = Fastify({ logger: true });
 
-await app.register(cors, {
-  origin: env.CLIENT_URL,
-  credentials: true,
-  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+  await app.register(cors, {
+    origin: env.CLIENT_URL,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+  });
+  await app.register(helmet);
+  await app.register(formbody);
+
+  app.get('/health', async () => ({ ok: true, service: 'metabolic-api' }));
+  await app.register(authRoutes);
+  await app.register(dashboardRoutes);
+  await app.register(programRoutes);
+  await app.register(nutritionRoutes);
+  await app.register(exerciseRoutes);
+  await app.register(foodRoutes);
+  await app.register(aiRoutes);
+  await app.register(smsRoutes);
+  await app.register(adminRoutes);
+
+  app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
+    app.log.error(error);
+    reply.code(error.statusCode ?? 500).send({ error: error.message ?? 'Internal server error' });
+  });
+
+  await app.listen({ port: env.PORT, host: '0.0.0.0' });
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
 });
-await app.register(helmet);
-await app.register(formbody);
-
-app.get('/health', async () => ({ ok: true, service: 'metabolic-api' }));
-await app.register(authRoutes);
-await app.register(dashboardRoutes);
-await app.register(programRoutes);
-await app.register(nutritionRoutes);
-await app.register(exerciseRoutes);
-await app.register(foodRoutes);
-await app.register(aiRoutes);
-await app.register(smsRoutes);
-await app.register(adminRoutes);
-
-app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
-  app.log.error(error);
-  reply.code(error.statusCode ?? 500).send({ error: error.message ?? 'Internal server error' });
-});
-
-await app.listen({ port: env.PORT, host: '0.0.0.0' });

@@ -9,3 +9,5 @@ client/.vite
 coverage
 .prisma
 *.log
+.tmp
+.firebase

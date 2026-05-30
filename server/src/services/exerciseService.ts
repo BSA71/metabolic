@@ -253,3 +253,12 @@ export async function markDone(userId: string, id: string) {
     return scheduled;
   });
 }
+
+export async function markAllPlannedExercisesDone(userId: string, date: string) {
+  const planned = await getScheduledExercises(userId, date);
+  const toComplete = planned.filter((item) => item.status === ExerciseStatus.PLANNED);
+  for (const item of toComplete) {
+    await markDone(userId, item.id);
+  }
+  return toComplete.map((item) => item.exercise.name);
+}
