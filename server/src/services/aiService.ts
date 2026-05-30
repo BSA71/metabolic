@@ -463,9 +463,7 @@ class GeminiAiProvider implements AiProvider {
 
       const chat = this.chatModel().startChat({
         history,
-        systemInstruction: {
-          parts: [{ text: `${ASSISTANT_SYSTEM}${channelInstruction}` }]
-        }
+        systemInstruction: `${ASSISTANT_SYSTEM}${channelInstruction}`
       });
       const result = await chat.sendMessage(last.content);
       return result.response.text().trim();
