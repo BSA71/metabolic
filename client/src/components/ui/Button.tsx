@@ -2,8 +2,8 @@ import { clsx } from 'clsx';
 import type { ButtonHTMLAttributes } from 'react';
 
 const variants = {
-  primary: 'bg-brand-dark dark:bg-brand-yellow text-white dark:text-brand-dark hover:opacity-90',
-  secondary: 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white ring-1 ring-inset ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+  primary: 'bg-brand-navy text-brand-off-white hover:bg-brand-navy/90 dark:bg-brand-green dark:text-brand-navy dark:hover:bg-brand-green-light',
+  secondary: 'bg-app-surface text-app-text ring-1 ring-inset ring-app-border hover:bg-app-muted'
 } as const;
 
 export function Button({
