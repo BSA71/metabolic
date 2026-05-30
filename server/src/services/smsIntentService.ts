@@ -1,45 +1,206 @@
+import { SmsDirection } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { getTodayDashboard } from './dashboardService.js';
-import { markDone } from './exerciseService.js';
+import { markAllPlannedExercisesDone, markDone } from './exerciseService.js';
+import { markMealEatenAsPlanned } from './nutritionService.js';
+import { chatWithSmsAssistant } from './assistantService.js';
+import { toDateKey } from '../utils/dates.js';
+import type { ChatMessage } from './aiService.js';
 
-export type SmsIntent = 'NEXT_MEAL' | 'CALORIE_STATUS' | 'PROTEIN_REMAINING' | 'EXERCISES_LEFT' | 'MARK_EXERCISE_DONE' | 'LOG_FOOD' | 'UNKNOWN';
+export type SmsIntent =
+  | 'MARK_ALL_EXERCISES_DONE'
+  | 'MARK_EXERCISE_DONE'
+  | 'MARK_MEAL_COMPLETE'
+  | 'LOG_FOOD'
+  | 'AI_CHAT';
 
-export function parseSmsIntent(message: string): { intent: SmsIntent; foodText?: string; mealName?: string } {
-  const text = message.toLowerCase();
-  if (text.includes('meal') && text.includes('next')) return { intent: 'NEXT_MEAL' };
-  if (text.includes('calorie')) return { intent: 'CALORIE_STATUS' };
-  if (text.includes('protein')) return { intent: 'PROTEIN_REMAINING' };
-  if (text.includes('exercise') || text.includes('workout')) return { intent: 'EXERCISES_LEFT' };
-  if (text.includes('mark') && text.includes('done')) return { intent: 'MARK_EXERCISE_DONE' };
+type SmsAction =
+  | { intent: 'MARK_ALL_EXERCISES_DONE' }
+  | { intent: 'MARK_EXERCISE_DONE'; exerciseName?: string }
+  | { intent: 'MARK_MEAL_COMPLETE'; mealName?: string }
+  | { intent: 'LOG_FOOD'; foodText: string; mealName: string }
+  | { intent: null };
+
+const MEAL_NAME_PATTERN = /\b(breakfast|lunch|dinner|snack|brunch)\b/i;
+
+function wantsMarkMealComplete(text: string) {
+  if (/\bmeal\b/i.test(text) && /\b(complete|completed|done|eaten|as planned)\b/i.test(text)) return true;
+  if (/\bmark\b.*\b(breakfast|lunch|dinner|snack|brunch)\b/i.test(text)) return true;
+  if (/\b(ate|finished|completed|done with)\b.*\b(this )?(my )?(breakfast|lunch|dinner|snack|meal)\b/i.test(text)) return true;
+  return false;
+}
+
+function parseMealName(text: string) {
+  const match = text.match(MEAL_NAME_PATTERN);
+  return match?.[1];
+}
+
+function wantsMarkAllExercises(text: string) {
+  if (/\bmark\b.*\b(all|every)\b.*\b(exercise|workout)/i.test(text)) return true;
+  if (/\bmark\b.*\b(exercise )?list\b.*\b(as )?(done|complete)/i.test(text)) return true;
+  if (/\b(all|every)\b.*\b(exercise|workout)s?\b.*\b(done|complete|finished)/i.test(text)) return true;
+  if (/\b(i'?ve?|i have|i)\b.*\b(done|finished|completed)\b.*\b(all|every)\b.*\b(exercise|workout)/i.test(text)) return true;
+  if (/\b(i'?ve?|i have|i)\b.*\b(done|finished|completed)\b.*\b(all of )?(the )?(my )?(exercise|workout)/i.test(text)) return true;
+  return false;
+}
+
+function parseExerciseNameFromMarkDone(text: string) {
+  const match = text.match(/\bmark\s+(.+?)\s+(?:as\s+)?done\b/i);
+  if (!match) return undefined;
+  const name = match[1].trim();
+  if (/^(all|every|exercise|workout|the|my)$/i.test(name)) return undefined;
+  if (/^(all|every)\b/i.test(name)) return undefined;
+  return name;
+}
+
+/** Detects SMS actions that write to the database. Everything else goes to AI. */
+export function parseSmsAction(message: string): SmsAction {
+  const text = message.toLowerCase().trim();
+
   const logMatch = message.match(/log\s+(.+?)\s+for\s+(.+)/i);
   if (logMatch) return { intent: 'LOG_FOOD', foodText: logMatch[1], mealName: logMatch[2] };
-  return { intent: 'UNKNOWN' };
+
+  if (wantsMarkAllExercises(text)) return { intent: 'MARK_ALL_EXERCISES_DONE' };
+
+  if (wantsMarkMealComplete(text)) {
+    return { intent: 'MARK_MEAL_COMPLETE', mealName: parseMealName(text) };
+  }
+
+  if (text.includes('mark') && text.includes('done') && !/\bmeal\b/i.test(text)) {
+    return { intent: 'MARK_EXERCISE_DONE', exerciseName: parseExerciseNameFromMarkDone(text) };
+  }
+
+  return { intent: null };
+}
+
+async function loadSmsChatHistory(userId: string, phone: string, limit = 8): Promise<ChatMessage[]> {
+  const rows = await prisma.smsMessage.findMany({
+    where: { userId, phone },
+    orderBy: { createdAt: 'desc' },
+    take: limit * 2
+  });
+
+  const messages: ChatMessage[] = [];
+  for (const row of rows.reverse()) {
+    if (row.direction === SmsDirection.INBOUND) {
+      messages.push({ role: 'user', content: row.message });
+    } else if (row.response) {
+      messages.push({ role: 'assistant', content: row.response });
+    }
+  }
+  return messages;
+}
+
+function findPlannedExercise(
+  exercises: Awaited<ReturnType<typeof getTodayDashboard>>['exercises'],
+  exerciseName?: string
+) {
+  const planned = exercises.filter((exercise) => exercise.status === 'PLANNED');
+  if (!exerciseName) return planned[0];
+
+  const query = exerciseName.toLowerCase();
+  return planned.find((entry) => entry.exercise.name.toLowerCase().includes(query));
+}
+
+function findMealToMark(
+  meals: Awaited<ReturnType<typeof getTodayDashboard>>['meals'],
+  mealName?: string
+) {
+  const incomplete = meals
+    .filter((meal) => !['EATEN_AS_PLANNED', 'SKIPPED', 'MISSED'].includes(meal.status))
+    .sort((a, b) => a.mealNumber - b.mealNumber);
+  if (!mealName) return incomplete[0];
+
+  const query = mealName.toLowerCase();
+  return incomplete.find((meal) => meal.name.toLowerCase().includes(query));
+}
+
+function pickEncouragement() {
+  const lines = [
+    'Way to go on sticking to the plan!',
+    'Nice work — keep that momentum going.',
+    'That is a win. Stack another one tomorrow.',
+    'Love the consistency. Keep showing up.'
+  ];
+  return lines[Math.floor(Math.random() * lines.length)];
+}
+
+async function handleWriteAction(userId: string, action: Exclude<SmsAction, { intent: null }>) {
+  const dashboard = await getTodayDashboard(userId);
+  const todayKey = dashboard.dailyLog ? toDateKey(dashboard.dailyLog.date) : toDateKey(new Date());
+
+  if (action.intent === 'MARK_ALL_EXERCISES_DONE') {
+    const completed = await markAllPlannedExercisesDone(userId, todayKey);
+    if (!completed.length) return 'No planned exercises left today.';
+    return `Marked done: ${completed.join(', ')}. ${pickEncouragement()}`;
+  }
+
+  if (action.intent === 'MARK_EXERCISE_DONE') {
+    const next = findPlannedExercise(dashboard.exercises, action.exerciseName);
+    if (!next) {
+      return action.exerciseName
+        ? `I could not find a planned exercise matching "${action.exerciseName}".`
+        : 'No planned exercises left today.';
+    }
+    await markDone(userId, next.id);
+    const remaining = dashboard.exercises.filter((exercise) => exercise.status === 'PLANNED').length - 1;
+    const cheer = remaining === 0 ? pickEncouragement() : 'One down — keep going.';
+    return `Marked ${next.exercise.name} done. ${cheer}`;
+  }
+
+  if (action.intent === 'MARK_MEAL_COMPLETE') {
+    const meal = findMealToMark(dashboard.meals, action.mealName);
+    if (!meal) {
+      return action.mealName
+        ? `I could not find an open meal matching "${action.mealName}".`
+        : 'No meals left to mark complete today.';
+    }
+    await markMealEatenAsPlanned(userId, meal.id);
+    const updated = await getTodayDashboard(userId);
+    const nextMeal = updated.meals.find((entry) => !['EATEN_AS_PLANNED', 'SKIPPED', 'MISSED'].includes(entry.status));
+    const nextPart = nextMeal
+      ? ` Next up: ${nextMeal.name}${nextMeal.plannedTime ? ` at ${nextMeal.plannedTime}` : ''}.`
+      : ' All meals are complete for today.';
+    return `Got it — ${meal.name} marked as eaten as planned. You have ${updated.summary?.caloriesRemaining ?? 0} calories and ${updated.summary?.proteinRemaining ?? 0}g protein remaining.${nextPart} ${pickEncouragement()}`;
+  }
+
+  return `I parsed "${action.foodText}" for ${action.mealName}. Food logging by SMS is coming soon — use the app for now.`;
+}
+
+async function handleAiChat(userId: string, phone: string, message: string) {
+  const priorMessages = await loadSmsChatHistory(userId, phone);
+  const withoutCurrent = priorMessages.at(-1)?.role === 'user' ? priorMessages.slice(0, -1) : priorMessages;
+  const messages: ChatMessage[] = [...withoutCurrent, { role: 'user', content: message }];
+  const { reply } = await chatWithSmsAssistant(userId, messages);
+  return reply;
 }
 
 export async function handleSms(phone: string, message: string) {
   const user = await prisma.user.findFirst({ where: { phone } });
-  const parsed = parseSmsIntent(message);
-  const inbound = await prisma.smsMessage.create({ data: { phone, userId: user?.id, direction: 'INBOUND', message, intent: parsed.intent } });
+  const action = parseSmsAction(message);
+  const intent = action.intent ?? 'AI_CHAT';
+
+  const inbound = await prisma.smsMessage.create({
+    data: { phone, userId: user?.id, direction: 'INBOUND', message, intent }
+  });
+
   if (!user) {
     const response = 'We could not find a Metabolic user for this phone number.';
     await prisma.smsMessage.create({ data: { phone, direction: 'OUTBOUND', message: response, response, status: 'PROCESSED' } });
     return { inbound, response };
   }
 
-  const dashboard = await getTodayDashboard(user.id);
-  let response = 'I did not understand that yet. Try asking what meal is next, calories left, protein left, or exercises left.';
-  if (parsed.intent === 'NEXT_MEAL') response = `Next meal: ${dashboard.summary?.nextMeal ?? 'No active meal found'}.`;
-  if (parsed.intent === 'CALORIE_STATUS') response = `You have ${dashboard.summary?.caloriesRemaining ?? 0} calories remaining today.`;
-  if (parsed.intent === 'PROTEIN_REMAINING') response = `You have ${dashboard.summary?.proteinRemaining ?? 0}g protein remaining today.`;
-  if (parsed.intent === 'EXERCISES_LEFT') response = `You have ${dashboard.summary?.exercisesLeft ?? 0} exercises left today.`;
-  if (parsed.intent === 'MARK_EXERCISE_DONE') {
-    const next = dashboard.exercises.find((exercise) => exercise.status === 'PLANNED');
-    response = next ? `Marked ${next.exercise.name} done.` : 'No planned exercises left today.';
-    if (next) await markDone(user.id, next.id);
+  let response: string;
+  try {
+    response = action.intent ? await handleWriteAction(user.id, action) : await handleAiChat(user.id, phone, message);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Assistant unavailable';
+    response = `Sorry, I could not answer that right now. ${detail}`;
   }
-  if (parsed.intent === 'LOG_FOOD') response = `I parsed "${parsed.foodText}" for ${parsed.mealName}. Food logging by SMS is queued for the AI parser.`;
 
   await prisma.smsMessage.update({ where: { id: inbound.id }, data: { status: 'PROCESSED', response } });
-  await prisma.smsMessage.create({ data: { phone, userId: user.id, direction: 'OUTBOUND', message: response, response, status: 'PROCESSED' } });
+  await prisma.smsMessage.create({
+    data: { phone, userId: user.id, direction: 'OUTBOUND', message: response, response, status: 'PROCESSED' }
+  });
   return { inbound, response };
 }

@@ -24,10 +24,12 @@ export type ExerciseEstimate = {
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
+export type ChatChannel = 'web' | 'sms';
+
 export interface AiProvider {
   lookupFood(input: string): Promise<FoodEstimate[]>;
   lookupExercises(input: string): Promise<ExerciseEstimate[]>;
-  chat(messages: ChatMessage[], context: string): Promise<string>;
+  chat(messages: ChatMessage[], context: string, channel?: ChatChannel): Promise<string>;
 }
 
 const foodEstimateSchema = z.object({
@@ -146,7 +148,19 @@ Return exactly 4 distinct exercises. Keep descriptions under 140 characters. Use
 const ASSISTANT_SYSTEM = `You are a concise metabolic health coach assistant for the Metabolic app.
 Answer using the user's live program data when relevant. Be practical and specific.
 Keep responses short unless the user asks for detail. Use plain language, not markdown headers.
-If data is missing, say what you would need rather than inventing numbers.`;
+If data is missing, say what you would need rather than inventing numbers.
+Be warm and encouraging when the user is doing well — celebrate meals logged, exercises completed, and consistency.
+Keep motivation genuine and tied to their actual progress, not generic hype.`;
+
+const SMS_ASSISTANT_ADDENDUM = `You are replying over SMS or WhatsApp.
+Keep answers under 320 characters when you can. Hard limit 1500 characters.
+Use plain text only — no markdown, bullets, asterisks, or headers.
+When listing meals or exercises, use short numbered lines.
+For meal-planning questions, use the user's actual meals, macros, and targets from context — do not invent foods or numbers.
+You cannot change the user's data. Never say you marked exercises or meals complete unless program data already shows that status.
+If the user wants to mark a meal eaten, tell them to say "mark this meal complete" or "mark lunch as eaten".
+If the user wants to mark exercises done, tell them to say "mark all exercises done" or "mark done" for the next one.
+End with a brief line of encouragement when it fits — e.g. sticking to the plan, finishing workouts, or hitting protein. One short sentence, not cheesy.`;
 
 function normalizeEstimate(parsed: z.infer<typeof foodEstimateSchema>): FoodEstimate {
   return {
@@ -327,11 +341,12 @@ class MockAiProvider implements AiProvider {
     ];
   }
 
-  async chat(messages: ChatMessage[], context: string): Promise<string> {
+  async chat(messages: ChatMessage[], context: string, channel: ChatChannel = 'web'): Promise<string> {
     const last = messages.at(-1)?.content.toLowerCase() ?? '';
-    if (last.includes('meal')) return `Based on your data: ${context.slice(0, 200)}… (mock provider — set AI_PROVIDER=gemini to enable Gemini.)`;
-    if (last.includes('calorie')) return 'Calorie guidance is available once Gemini is configured.';
-    return 'AI assistant is running in mock mode. Set AI_PROVIDER=gemini and GEMINI_API_KEY in server/.env.';
+    const suffix = channel === 'sms' ? ' (mock SMS — set AI_PROVIDER=gemini.)' : ' (mock — set AI_PROVIDER=gemini.)';
+    if (last.includes('meal')) return `Based on your program data: ${context.slice(0, 180)}…${suffix}`;
+    if (last.includes('calorie')) return `Calorie guidance uses your live targets.${suffix}`;
+    return `AI assistant is in mock mode. Set AI_PROVIDER=gemini and GEMINI_API_KEY in server/.env.${suffix}`;
   }
 }
 
@@ -429,18 +444,28 @@ class GeminiAiProvider implements AiProvider {
     }
   }
 
-  async chat(messages: ChatMessage[], context: string): Promise<string> {
+  async chat(messages: ChatMessage[], context: string, channel: ChatChannel = 'web'): Promise<string> {
     try {
-      const history = messages.slice(0, -1).map((message) => ({
-        role: message.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: message.content }]
-      }));
+      const channelInstruction = channel === 'sms' ? `\n\n${SMS_ASSISTANT_ADDENDUM}` : '';
+      const contextTurn = [
+        { role: 'user' as const, parts: [{ text: `Program data (JSON):\n${context}` }] },
+        { role: 'model' as const, parts: [{ text: 'Understood. I will answer using this program data.' }] }
+      ];
+      const history = [
+        ...contextTurn,
+        ...messages.slice(0, -1).map((message) => ({
+          role: message.role === 'assistant' ? ('model' as const) : ('user' as const),
+          parts: [{ text: message.content }]
+        }))
+      ];
       const last = messages.at(-1);
       if (!last) throw new Error('Message required');
 
       const chat = this.chatModel().startChat({
         history,
-        systemInstruction: `${ASSISTANT_SYSTEM}\n\nUser context (JSON):\n${context}`
+        systemInstruction: {
+          parts: [{ text: `${ASSISTANT_SYSTEM}${channelInstruction}` }]
+        }
       });
       const result = await chat.sendMessage(last.content);
       return result.response.text().trim();
