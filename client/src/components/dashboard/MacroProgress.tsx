@@ -14,19 +14,19 @@ export function MacroProgress({ dashboard }: { dashboard: Dashboard }) {
 
   return (
     <Card>
-      <h2 className="mb-4 text-lg font-bold">Macro Status</h2>
+      <h2 className="mb-4 text-lg font-semibold text-brand-navy dark:text-brand-off-white">Macro Status</h2>
       <div className="space-y-4">
         {rows.map(([label, actual, target]) => (
-          <div key={label}>
-            <div className="mb-1 flex justify-between text-sm">
-              <span>{label}</span>
+          <div key={label as string}>
+            <div className="mb-1 flex justify-between text-sm text-app-text">
+              <span>{label as string}</span>
               <span className="text-app-text-muted">
                 {Math.round(Number(actual))} / {Math.round(Number(target))}
               </span>
             </div>
             <div className="h-3 rounded-full bg-[var(--app-progress-track)]">
               <div
-                className="h-3 rounded-full bg-brand"
+                className="h-3 rounded-full bg-brand-green dark:bg-brand-green-light"
                 style={{ width: `${Math.min((Number(actual) / Number(target)) * 100, 100)}%` }}
               />
             </div>

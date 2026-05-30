@@ -20,7 +20,7 @@ export function TodayNutrition({
 
   return (
     <Card>
-      <h2 className="mb-4 text-lg font-bold">Today's Nutrition</h2>
+      <h2 className="mb-4 text-lg font-semibold text-brand-navy dark:text-brand-off-white">Today&apos;s Nutrition</h2>
       <div className="space-y-3">
         {meals.map((meal) => {
           const expanded = expandedMealId === meal.id;
@@ -35,7 +35,7 @@ export function TodayNutrition({
                 aria-expanded={expanded}
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold">
+                  <p className="font-semibold text-app-text">
                     {meal.mealNumber}. {meal.name}
                   </p>
                   <p className="text-sm text-app-text-muted">

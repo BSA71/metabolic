@@ -4,11 +4,12 @@ import { login, loginWithGoogle, signUp } from '../services/auth';
 import { isFirebaseConfigured } from '../services/firebase';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { BrandLogo } from '../components/brand/BrandLogo';
 import { ThemeToggle } from '../components/layout/ThemeToggle';
 import type { AppUser } from '../types';
 
 const inputClass =
-  'w-full rounded-2xl border border-app-border bg-app-bg p-3 text-app-text placeholder:text-app-text-muted';
+  'w-full rounded-2xl border border-app-border bg-app-surface p-3 text-app-text placeholder:text-app-text-muted focus:outline-none focus:ring-2 focus:ring-brand-green/40';
 
 export function LoginPage({ authenticated }: { authenticated: boolean; appUser?: AppUser | null }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -49,20 +50,22 @@ export function LoginPage({ authenticated }: { authenticated: boolean; appUser?:
       </div>
       <Card className="w-full max-w-md">
         <div className="mb-6">
-          <img src="/logo.png" alt="Master Metabolic" className="h-12 w-auto object-contain object-left" />
-          <p className="mt-2 text-sm text-app-text-muted">
+          <BrandLogo showTagline markSize={44} />
+          <p className="mt-3 text-sm text-app-text-muted">
             {mode === 'signup' ? 'Create your account' : 'Sign in with Firebase Auth'}
           </p>
         </div>
+
         {!isFirebaseConfigured && (
-          <div className="mb-4 rounded-2xl border border-brand/40 bg-brand/10 p-4 text-sm">
+          <div className="mb-4 rounded-2xl border border-brand-gold/40 bg-brand-gold/10 p-4 text-sm text-brand-navy dark:text-brand-off-white">
             <p className="font-semibold">Firebase is not configured yet.</p>
-            <p className="mt-1 text-app-text-muted">
+            <p className="mt-1">
               Add your Firebase web app values to <code>client/.env</code>, then restart{' '}
               <code>npm run dev</code>.
             </p>
           </div>
         )}
+
         <button
           type="button"
           className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-app-border bg-app-surface px-4 py-3 text-sm font-semibold shadow-sm transition hover:bg-app-muted disabled:opacity-50"
@@ -71,11 +74,13 @@ export function LoginPage({ authenticated }: { authenticated: boolean; appUser?:
         >
           Continue with Google
         </button>
+
         <div className="mb-4 flex items-center gap-3 text-xs uppercase tracking-wide text-app-text-muted">
           <div className="h-px flex-1 bg-app-border" />
           or use email
           <div className="h-px flex-1 bg-app-border" />
         </div>
+
         <div className="mb-4 grid grid-cols-2 rounded-2xl bg-app-muted p-1 text-sm font-semibold">
           <button
             type="button"
@@ -92,6 +97,7 @@ export function LoginPage({ authenticated }: { authenticated: boolean; appUser?:
             Create account
           </button>
         </div>
+
         <form className="space-y-4" onSubmit={submit}>
           {mode === 'signup' && (
             <div className="grid gap-3 sm:grid-cols-2">

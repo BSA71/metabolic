@@ -2,6 +2,7 @@ import { Apple, Bot, Dumbbell, Gauge, LineChart, Settings, Target } from 'lucide
 import { NavLink } from 'react-router-dom';
 import type { AppUser } from '../../types';
 import { isAdminRole } from '../../utils/roles';
+import { BrandLogo } from '../brand/BrandLogo';
 
 const links = [
   ['/', 'Dashboard', Gauge],
@@ -19,8 +20,7 @@ export function Sidebar({ user }: { user?: AppUser | null }) {
   return (
     <aside className="hidden w-64 border-r border-app-border bg-app-surface p-5 lg:block">
       <div className="mb-8">
-        <img src="/logo.png" alt="Master Metabolic" className="h-10 w-auto max-w-full object-contain object-left" />
-        <p className="mt-2 text-xs text-app-text-muted">Command center</p>
+        <BrandLogo markSize={32} />
       </div>
       <nav className="space-y-1">
         {visibleLinks.map(([to, label, Icon]) => (
