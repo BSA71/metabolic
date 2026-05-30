@@ -11,6 +11,9 @@
   --brand-gold: #e2c26e;
   --brand-off-white: #e9ecef;
 
+  --brand-foreground: #e9ecef;
+  --brand-deep: #6d8f52;
+
   --app-bg: #e9ecef;
   --app-surface: #ffffff;
   --app-muted: #f4f6f7;
@@ -37,6 +40,8 @@
   --app-accent-light: #7da35d;
   --app-chart-line: #a6c98a;
   --app-progress-track: #3d4a57;
+  --brand-foreground: #1f2933;
+  --brand-deep: #a6c98a;
 }
 
 @theme inline {
@@ -45,6 +50,9 @@
   --color-brand-green-light: var(--brand-green-light);
   --color-brand-gold: var(--brand-gold);
   --color-brand-off-white: var(--brand-off-white);
+  --color-brand: var(--brand-green);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-foreground: var(--brand-foreground);
   --color-app-bg: var(--app-bg);
   --color-app-surface: var(--app-surface);
   --color-app-muted: var(--app-muted);

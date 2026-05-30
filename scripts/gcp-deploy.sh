@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Build and deploy Metabolic API (Cloud Run) + client (Firebase Hosting).
+set -euo pipefail
+
+PROJECT_ID="${PROJECT_ID:-metabolic-v1}"
+REGION="${REGION:-us-central1}"
+SQL_INSTANCE="${SQL_INSTANCE:-metabolic-db}"
+AR_REPO="${AR_REPO:-metabolic}"
+SERVICE_NAME="${SERVICE_NAME:-metabolic-api}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/api:${IMAGE_TAG}"
+CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CI="${CI:-false}"
+
+cd "$ROOT_DIR"
+gcloud config set project "$PROJECT_ID"
+
+echo "==> Configure Docker for Artifact Registry"
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+echo "==> Build and push API image (linux/amd64 for Cloud Run)"
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=false \
+  --sbom=false \
+  -f server/Dockerfile \
+  -t "$IMAGE" \
+  --push \
+  .
+
+echo "==> Deploy Cloud Run"
+gcloud run deploy "$SERVICE_NAME" \
+  --image "$IMAGE" \
+  --region "$REGION" \
+  --platform managed \
+  --allow-unauthenticated \
+  --port 8080 \
+  --memory 512Mi \
+  --cpu 1 \
+  --min-instances 0 \
+  --max-instances 2 \
+  --add-cloudsql-instances "$CONNECTION" \
+  --set-secrets "\
+DATABASE_URL=DATABASE_URL:latest,\
+FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest,\
+FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest,\
+FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,\
+GEMINI_API_KEY=GEMINI_API_KEY:latest,\
+CLIENT_URL=CLIENT_URL:latest" \
+  --set-env-vars "NODE_ENV=production,AI_PROVIDER=gemini"
+
+API_URL="$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --format='value(status.url)')"
+echo "API URL: $API_URL"
+
+has_client_env=false
+if [[ -n "${VITE_FIREBASE_API_KEY:-}" ]]; then
+  has_client_env=true
+elif [[ -f client/.env.production ]]; then
+  has_client_env=true
+fi
+
+if [[ "$has_client_env" == "false" ]]; then
+  if [[ "$CI" == "true" ]]; then
+    echo "Missing VITE_* secrets for client build in CI."
+    exit 1
+  fi
+  echo ""
+  echo "Create client/.env.production with VITE_API_URL and VITE_FIREBASE_* values, then re-run."
+  echo "  VITE_API_URL=$API_URL"
+  exit 0
+fi
+
+echo "==> Build client"
+if [[ -f client/.env.production ]] && [[ -z "${VITE_FIREBASE_API_KEY:-}" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source client/.env.production
+  set +a
+fi
+
+npm run build --workspace client
+
+echo "==> Deploy Firebase Hosting"
+npx --yes firebase-tools@13 deploy --only hosting --project "$PROJECT_ID"
+
+echo ""
+echo "Deployed."
+echo "  API:      $API_URL/health"
+echo "  Frontend: https://${PROJECT_ID}.web.app"

@@ -5,7 +5,11 @@ import { isFirebaseConfigured } from '../services/firebase';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { BrandLogo } from '../components/brand/BrandLogo';
+import { ThemeToggle } from '../components/layout/ThemeToggle';
 import type { AppUser } from '../types';
+
+const inputClass =
+  'w-full rounded-2xl border border-app-border bg-app-surface p-3 text-app-text placeholder:text-app-text-muted focus:outline-none focus:ring-2 focus:ring-brand-green/40';
 
 export function LoginPage({ authenticated }: { authenticated: boolean; appUser?: AppUser | null }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -39,11 +43,11 @@ export function LoginPage({ authenticated }: { authenticated: boolean; appUser?:
     }
   }
 
-  const inputClass =
-    'w-full rounded-2xl border border-app-border bg-app-surface p-3 text-app-text placeholder:text-app-text-muted focus:outline-none focus:ring-2 focus:ring-brand-green/40';
-
   return (
-    <main className="grid min-h-screen place-items-center bg-app-bg p-4">
+    <main className="relative grid min-h-screen place-items-center bg-app-bg p-4 text-app-text">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-md">
         <div className="mb-6">
           <BrandLogo showTagline markSize={44} />
@@ -64,7 +68,7 @@ export function LoginPage({ authenticated }: { authenticated: boolean; appUser?:
 
         <button
           type="button"
-          className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-app-border bg-app-surface px-4 py-3 text-sm font-semibold shadow-sm hover:bg-app-muted disabled:opacity-50"
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-app-border bg-app-surface px-4 py-3 text-sm font-semibold shadow-sm transition hover:bg-app-muted disabled:opacity-50"
           disabled={!isFirebaseConfigured}
           onClick={googleLogin}
         >
@@ -80,14 +84,14 @@ export function LoginPage({ authenticated }: { authenticated: boolean; appUser?:
         <div className="mb-4 grid grid-cols-2 rounded-2xl bg-app-muted p-1 text-sm font-semibold">
           <button
             type="button"
-            className={`rounded-xl px-3 py-2 ${mode === 'login' ? 'bg-app-surface shadow-sm text-app-text' : 'text-app-text-muted'}`}
+            className={`rounded-xl px-3 py-2 ${mode === 'login' ? 'bg-app-surface text-app-text shadow-sm' : 'text-app-text-muted'}`}
             onClick={() => setMode('login')}
           >
             Login
           </button>
           <button
             type="button"
-            className={`rounded-xl px-3 py-2 ${mode === 'signup' ? 'bg-app-surface shadow-sm text-app-text' : 'text-app-text-muted'}`}
+            className={`rounded-xl px-3 py-2 ${mode === 'signup' ? 'bg-app-surface text-app-text shadow-sm' : 'text-app-text-muted'}`}
             onClick={() => setMode('signup')}
           >
             Create account
@@ -106,7 +110,7 @@ export function LoginPage({ authenticated }: { authenticated: boolean; appUser?:
           <Button className="w-full" disabled={!isFirebaseConfigured}>
             {mode === 'signup' ? 'Create account' : 'Login'}
           </Button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-500">{error}</p>}
         </form>
       </Card>
     </main>

@@ -20,7 +20,7 @@ export function MacroProgress({ dashboard }: { dashboard: Dashboard }) {
           <div key={label as string}>
             <div className="mb-1 flex justify-between text-sm text-app-text">
               <span>{label as string}</span>
-              <span>
+              <span className="text-app-text-muted">
                 {Math.round(Number(actual))} / {Math.round(Number(target))}
               </span>
             </div>

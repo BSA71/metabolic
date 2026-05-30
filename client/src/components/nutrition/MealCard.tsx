@@ -1,9 +1,39 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { CheckCircle2, ClipboardPlus, Copy, Pencil } from 'lucide-react';
 import type { Meal, MealItem } from '../../types';
 import { api, isFuture } from '../../services/api';
 import { Badge } from '../ui/Badge';
-import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+
+function MealActionButton({
+  label,
+  onClick,
+  children,
+  variant = 'default'
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  variant?: 'default' | 'primary' | 'accent';
+}) {
+  const styles = {
+    default: 'text-app-text-muted hover:bg-app-muted hover:text-app-text',
+    primary: 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40',
+    accent: 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+  };
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className={`grid h-9 w-9 place-items-center rounded-xl transition ${styles[variant]}`}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
 
 export function MealCard({
   meal,
@@ -103,11 +133,31 @@ export function MealCard({
   return (
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm text-slate-500">Meal {meal.mealNumber}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-app-text-muted">Meal {meal.mealNumber}</p>
           <h3 className="text-lg font-bold">{meal.name}</h3>
         </div>
-        <Badge tone={meal.status.includes('EATEN') || meal.status === 'MODIFIED' ? 'green' : 'slate'}>{meal.status.replaceAll('_', ' ')}</Badge>
+        <div className="flex shrink-0 items-center gap-1">
+          <MealActionButton label="Edit plan" onClick={() => onEditPlan(meal.id)}>
+            <Pencil size={18} />
+          </MealActionButton>
+          {!future && (
+            <>
+              <MealActionButton label="Log actual" variant="primary" onClick={() => onLogActual(meal.id)}>
+                <ClipboardPlus size={18} />
+              </MealActionButton>
+              <MealActionButton label="Mark planned as eaten" variant="accent" onClick={() => void markPlannedAsEaten()}>
+                <CheckCircle2 size={18} />
+              </MealActionButton>
+            </>
+          )}
+          <MealActionButton label="Copy from yesterday" onClick={() => void copyFromYesterday()}>
+            <Copy size={18} />
+          </MealActionButton>
+          <Badge tone={meal.status.includes('EATEN') || meal.status === 'MODIFIED' ? 'green' : 'slate'}>
+            {meal.status.replaceAll('_', ' ')}
+          </Badge>
+        </div>
       </div>
 
       {toggleError && <p className="mt-2 text-sm text-red-600">{toggleError}</p>}
@@ -164,17 +214,6 @@ export function MealCard({
             {formatMealTotals(meal.actualCalories, meal.actualProtein, meal.actualCarbs, meal.actualFat)}
           </p>
         </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button onClick={() => onEditPlan(meal.id)}>Edit plan</Button>
-        {!future && (
-          <>
-            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => onLogActual(meal.id)}>Log actual</Button>
-            <Button onClick={() => void markPlannedAsEaten()}>Mark planned as eaten</Button>
-          </>
-        )}
-        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => void copyFromYesterday()}>Copy from yesterday</button>
       </div>
     </Card>
   );

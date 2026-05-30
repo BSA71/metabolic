@@ -9,13 +9,17 @@ export function WeightTrendChart({ data }: { data: { date: string; weight: numbe
         <ResponsiveContainer>
           <LineChart data={data}>
             <XAxis dataKey="date" hide />
-            <YAxis domain={['dataMin - 5', 'dataMax + 5']} tick={{ fill: 'var(--app-text-muted)' }} />
+            <YAxis
+              domain={['dataMin - 5', 'dataMax + 5']}
+              stroke="var(--app-text-muted)"
+              tick={{ fill: 'var(--app-text-muted)' }}
+            />
             <Tooltip
               contentStyle={{
-                backgroundColor: 'var(--app-surface)',
+                background: 'var(--app-surface)',
                 border: '1px solid var(--app-border)',
-                color: 'var(--app-text)',
-                borderRadius: '12px'
+                borderRadius: '12px',
+                color: 'var(--app-text)'
               }}
             />
             <Line
