@@ -22,6 +22,7 @@ type SmsAction =
   | { intent: null };
 
 const MEAL_NAME_PATTERN = /\b(breakfast|lunch|dinner|snack|brunch)\b/i;
+const EXERCISE_COMPLETE_PATTERN = /\b(done|complete|completed|finished|check(?:ed)?\s+off)\b/i;
 
 function wantsMarkMealComplete(text: string) {
   if (/\bmeal\b/i.test(text) && /\b(complete|completed|done|eaten|as planned)\b/i.test(text)) return true;
@@ -45,12 +46,55 @@ function wantsMarkAllExercises(text: string) {
 }
 
 function parseExerciseNameFromMarkDone(text: string) {
-  const match = text.match(/\bmark\s+(.+?)\s+(?:as\s+)?done\b/i);
-  if (!match) return undefined;
-  const name = match[1].trim();
-  if (/^(all|every|exercise|workout|the|my)$/i.test(name)) return undefined;
-  if (/^(all|every)\b/i.test(name)) return undefined;
-  return name;
+  const markMatch = text.match(/\bmark\s+(.+?)\s+(?:as\s+)?(?:done|complete(?:d)?|finished)\b/i);
+  if (markMatch) {
+    const name = markMatch[1].trim();
+    if (!/^(all|every|exercise|workout|the|my|this|it)$/i.test(name) && !/^(all|every)\b/i.test(name)) {
+      return name;
+    }
+  }
+
+  if (/\bmark\s+(?:as\s+)?(?:done|complete(?:d)?|finished)\b/i.test(text)) return undefined;
+
+  const finishedMatch = text.match(/\b(?:finished|completed|did)\s+(?:my\s+|the\s+)?(.+?)(?:\s+(?:exercise|workout))?\.?$/i);
+  if (finishedMatch) return finishedMatch[1].trim();
+
+  const namedMatch = text.match(/\b(.+?)\s+(?:is\s+)?(?:done|complete(?:d)?|finished)\b/i);
+  if (namedMatch) {
+    const name = namedMatch[1].trim();
+    if (!/^(i|it|that|this|all|everything|mark)$/i.test(name) && !MEAL_NAME_PATTERN.test(name)) {
+      return name;
+    }
+  }
+
+  const checkOffMatch = text.match(/\bcheck(?:ed)?\s+off\s+(.+?)(?:\s+(?:exercise|workout))?\.?$/i);
+  if (checkOffMatch) return checkOffMatch[1].trim();
+
+  return undefined;
+}
+
+function wantsMarkExerciseDone(text: string) {
+  if (wantsMarkMealComplete(text)) return false;
+  if (/\bmeal\b/i.test(text) && !/\b(exercise|workout|walk|run|lift)\b/i.test(text)) return false;
+
+  if (/\bmark\b/i.test(text) && EXERCISE_COMPLETE_PATTERN.test(text)) {
+    if (wantsMarkAllExercises(text)) return false;
+    return true;
+  }
+
+  if (/\b(finished|completed|did)\b/i.test(text) && !MEAL_NAME_PATTERN.test(text) && !/\bmeal\b/i.test(text)) {
+    return true;
+  }
+
+  const namedCompleteMatch = text.match(/\b([a-z][\w\s]{2,}?)\s+(?:is\s+)?(?:done|complete(?:d)?|finished)\b/i);
+  if (namedCompleteMatch && !MEAL_NAME_PATTERN.test(text) && !/\bmeal\b/i.test(text)) {
+    const prefix = namedCompleteMatch[1].trim();
+    if (!/^(i|it|that|this|all|everything|not|you|are|we|they|am|im|i'm)$/i.test(prefix)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /** Detects SMS actions that write to the database. Everything else goes to AI. */
@@ -66,7 +110,7 @@ export function parseSmsAction(message: string): SmsAction {
     return { intent: 'MARK_MEAL_COMPLETE', mealName: parseMealName(text) };
   }
 
-  if (text.includes('mark') && text.includes('done') && !/\bmeal\b/i.test(text)) {
+  if (wantsMarkExerciseDone(text)) {
     return { intent: 'MARK_EXERCISE_DONE', exerciseName: parseExerciseNameFromMarkDone(text) };
   }
 
