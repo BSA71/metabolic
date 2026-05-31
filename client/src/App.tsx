@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import type { User } from 'firebase/auth';
 import { listenForAuth } from './services/auth';
@@ -13,13 +13,53 @@ import { ProgressPage } from './pages/ProgressPage';
 import { AssistantPage } from './pages/AssistantPage';
 import { AdminPage } from './pages/AdminPage';
 import { LoginPage } from './pages/LoginPage';
+import { FirstTimeSetupPage } from './pages/FirstTimeSetupPage';
 import { CampaignPolicyPage } from './pages/CampaignPolicyPage';
 import { CampaignTermsPage } from './pages/CampaignTermsPage';
 import { isAdminRole } from './utils/roles';
 
-function Protected({ firebaseUser, appUser }: { firebaseUser: User | null; appUser: AppUser | null }) {
+function LoadingScreen() {
+  return (
+    <main className="grid min-h-screen place-items-center bg-app-bg p-4 text-app-text-muted">
+      Loading…
+    </main>
+  );
+}
+
+function Protected({
+  firebaseUser,
+  appUser,
+  onboardingChecked,
+  needsSetup
+}: {
+  firebaseUser: User | null;
+  appUser: AppUser | null;
+  onboardingChecked: boolean;
+  needsSetup: boolean;
+}) {
   if (!firebaseUser) return <Navigate to="/login" replace />;
+  if (!onboardingChecked) return <LoadingScreen />;
+  if (needsSetup) return <Navigate to="/setup" replace />;
   return <AppShell user={appUser} />;
+}
+
+function SetupRoute({
+  firebaseUser,
+  appUser,
+  onboardingChecked,
+  needsSetup,
+  onComplete
+}: {
+  firebaseUser: User | null;
+  appUser: AppUser | null;
+  onboardingChecked: boolean;
+  needsSetup: boolean;
+  onComplete: () => void;
+}) {
+  if (!firebaseUser) return <Navigate to="/login" replace />;
+  if (!onboardingChecked) return <LoadingScreen />;
+  if (!needsSetup) return <Navigate to="/" replace />;
+  return <FirstTimeSetupPage user={appUser} onComplete={onComplete} />;
 }
 
 function AdminRoute({ appUser }: { appUser: AppUser | null }) {
@@ -40,6 +80,20 @@ function AdminRoute({ appUser }: { appUser: AppUser | null }) {
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+
+  const refreshOnboardingStatus = useCallback(async () => {
+    try {
+      const status = await api<{ needsSetup: boolean }>('/api/onboarding/status');
+      setNeedsSetup(status.needsSetup);
+    } catch {
+      setNeedsSetup(false);
+    } finally {
+      setOnboardingChecked(true);
+    }
+  }, []);
+
   useEffect(
     () =>
       listenForAuth(async (user) => {
@@ -48,15 +102,25 @@ export default function App() {
           try {
             const me = await api<{ user: AppUser }>('/api/me');
             setAppUser(me.user);
+            await refreshOnboardingStatus();
           } catch {
             setAppUser(null);
+            setNeedsSetup(false);
+            setOnboardingChecked(true);
           }
         } else {
           setAppUser(null);
+          setNeedsSetup(false);
+          setOnboardingChecked(false);
         }
       }),
-    []
+    [refreshOnboardingStatus]
   );
+
+  const handleSetupComplete = useCallback(async () => {
+    setNeedsSetup(false);
+    await refreshOnboardingStatus();
+  }, [refreshOnboardingStatus]);
 
   return (
     <BrowserRouter>
@@ -64,7 +128,30 @@ export default function App() {
         <Route path="/login" element={<LoginPage authenticated={Boolean(firebaseUser)} appUser={appUser} />} />
         <Route path="/campaign-policy" element={<CampaignPolicyPage />} />
         <Route path="/campaign-terms" element={<CampaignTermsPage />} />
-        <Route element={<Protected firebaseUser={firebaseUser} appUser={appUser} />}>
+        <Route
+          path="/setup"
+          element={
+            <SetupRoute
+              firebaseUser={firebaseUser}
+              appUser={appUser}
+              onboardingChecked={onboardingChecked}
+              needsSetup={needsSetup}
+              onComplete={() => {
+                void handleSetupComplete();
+              }}
+            />
+          }
+        />
+        <Route
+          element={
+            <Protected
+              firebaseUser={firebaseUser}
+              appUser={appUser}
+              onboardingChecked={onboardingChecked}
+              needsSetup={needsSetup}
+            />
+          }
+        >
           <Route index element={<DashboardPage user={appUser} />} />
           <Route path="program" element={<ProgramPage />} />
           <Route path="nutrition" element={<NutritionPage />} />

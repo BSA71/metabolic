@@ -107,9 +107,14 @@ export function DashboardPage({ user }: { user?: AppUser | null }) {
       <div className="rounded-2xl border border-brand-green/30 bg-brand-green/10 p-6 text-brand-navy dark:text-brand-off-white">
         <h1 className="text-xl font-bold">No active program yet</h1>
         <p className="mt-2 text-sm text-app-text-muted">
-          Your account exists, but there is no active program attached to it yet. Sign in as{' '}
-          <code>user@metabolic.local</code> to use the seeded demo data, or create a program for this account.
+          Finish setting up your program to unlock the dashboard, nutrition, and exercise tools.
         </p>
+        <Link
+          to="/setup"
+          className="mt-4 inline-flex items-center rounded-full bg-brand-navy px-5 py-2.5 text-sm font-semibold text-brand-off-white transition hover:bg-brand-navy/90 dark:bg-brand-green dark:text-brand-navy"
+        >
+          Complete setup
+        </Link>
       </div>
     );
   }
