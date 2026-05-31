@@ -64,8 +64,8 @@ export function BrandLogo({
   markSize?: number;
 }) {
   return (
-    <div className={clsx('flex items-center gap-3', className)}>
-      <BrandMark size={markSize} className="shrink-0" />
+    <div className={clsx('flex items-start gap-3', className)}>
+      <BrandMark size={markSize} className="shrink-0 -translate-y-0.5" />
       <div className="min-w-0">
         <p className="leading-none">
           <span className="text-lg font-semibold tracking-tight text-brand-navy dark:text-brand-off-white sm:text-xl">
@@ -74,9 +74,8 @@ export function BrandLogo({
           <span className="ml-1 text-lg font-medium text-brand-green dark:text-brand-green-light sm:text-xl">OS</span>
         </p>
         {showTagline && (
-          <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-app-text-muted sm:text-[11px]">
-            Powered by the{' '}
-            <span className="text-brand-green dark:text-brand-green-light">Master Metabolic Method</span>
+          <p className="mt-1 text-[11px] font-medium text-brand-green dark:text-brand-green-light sm:text-xs">
+            The Master Metabolic Method
           </p>
         )}
       </div>

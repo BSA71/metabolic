@@ -1,4 +1,14 @@
-import { createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, signOut, updateProfile, type User } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  updateProfile,
+  type User
+} from 'firebase/auth';
 import { auth } from './firebase';
 
 export function login(email: string, password: string) {
@@ -18,6 +28,13 @@ export async function signUp(email: string, password: string, displayName: strin
 export function loginWithGoogle() {
   if (!auth) throw new Error('Firebase is not configured. Add VITE_FIREBASE_* values to client/.env.');
   return signInWithPopup(auth, new GoogleAuthProvider());
+}
+
+export function resetPassword(email: string) {
+  if (!auth) throw new Error('Firebase is not configured. Add VITE_FIREBASE_* values to client/.env.');
+  return sendPasswordResetEmail(auth, email.trim(), {
+    url: `${window.location.origin}/login`
+  });
 }
 
 export function logout() {
