@@ -18,7 +18,7 @@ export function TodayExercise({
 
   return (
     <Card>
-      <h2 className="mb-4 text-lg font-bold">Today&apos;s Exercises</h2>
+      <h2 className="mb-4 text-lg font-semibold text-brand-navy dark:text-brand-off-white">Today&apos;s Exercises</h2>
       {!exercises.length ? (
         <p className="text-sm text-app-text-muted">No exercises planned today.</p>
       ) : (
