@@ -1,6 +1,7 @@
 import { ProgramStatus } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { startOfUtcDay } from '../utils/dates.js';
+import { buildProgramMetrics } from '../utils/programMetrics.js';
 import { ensureTodayDailyLog } from './dailyLogService.js';
 
 const DEFAULT_EXERCISES = [
@@ -63,6 +64,8 @@ type SetupInput = {
   programName?: string;
   weight: number;
   goalWeight: number;
+  bodyFat?: number;
+  goalBodyFat?: number;
   calorieTarget?: number;
   proteinTarget?: number;
 };
@@ -92,32 +95,7 @@ export async function setupFirstProgram(userId: string, input: SetupInput) {
     });
 
     await tx.programMetric.createMany({
-      data: [
-        {
-          programId: created.id,
-          metricType: 'WEIGHT',
-          startValue: input.weight,
-          currentValue: input.weight,
-          goalValue: input.goalWeight,
-          unit: 'lbs'
-        },
-        {
-          programId: created.id,
-          metricType: 'CALORIES',
-          startValue: calories,
-          currentValue: calories,
-          goalValue: calories,
-          unit: 'kcal'
-        },
-        {
-          programId: created.id,
-          metricType: 'PROTEIN',
-          startValue: protein,
-          currentValue: protein,
-          goalValue: protein,
-          unit: 'g'
-        }
-      ]
+      data: buildProgramMetrics(created.id, input, calories, protein)
     });
 
     return created;

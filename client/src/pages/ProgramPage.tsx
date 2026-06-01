@@ -5,8 +5,9 @@ import { EditMetricsDrawer } from '../components/program/EditMetricsDrawer';
 import { ProgramDonutSummary } from '../components/program/ProgramDonutSummary';
 import { ProgramMetricTable } from '../components/program/ProgramMetricTable';
 import { ProgramMetricSnapshotHistory } from '../components/program/ProgramMetricSnapshotHistory';
+import { SnapshotTrackingSection } from '../components/program/SnapshotTrackingSection';
 import { todayKey } from '../services/api';
-import type { ProgramMetricSnapshot } from '../types';
+import type { ProgramMetricSnapshot, ProgressPhotoSet } from '../types';
 
 function normalizeMetric(metric: ProgramMetric): ProgramMetric {
   return {
@@ -35,12 +36,22 @@ export function ProgramPage() {
   const [program, setProgram] = useState<Program | null>(null);
   const [metrics, setMetrics] = useState<ProgramMetric[]>([]);
   const [snapshots, setSnapshots] = useState<ProgramMetricSnapshot[]>([]);
+  const [progressPhotos, setProgressPhotos] = useState<ProgressPhotoSet[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const [metricsDrawerOpen, setMetricsDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [error, setError] = useState('');
   const [snapshotError, setSnapshotError] = useState('');
+
+  const loadProgressPhotos = useCallback(async (programId: string) => {
+    try {
+      const rows = await api<ProgressPhotoSet[]>(`/api/programs/${programId}/progress-photos`);
+      setProgressPhotos(rows);
+    } catch {
+      setProgressPhotos([]);
+    }
+  }, []);
 
   const loadSnapshots = useCallback(async (programId: string) => {
     try {
@@ -64,9 +75,10 @@ export function ProgramPage() {
       setProgram(active);
       setMetrics((active?.metrics ?? []).map(normalizeMetric));
       if (active) {
-        await loadSnapshots(active.id);
+        await Promise.all([loadSnapshots(active.id), loadProgressPhotos(active.id)]);
       } else {
         setSnapshots([]);
+        setProgressPhotos([]);
         setSelectedSnapshotId(null);
       }
     } catch (err) {
@@ -75,7 +87,7 @@ export function ProgramPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadSnapshots]);
+  }, [loadSnapshots, loadProgressPhotos]);
 
   useEffect(() => {
     void loadProgram();
@@ -93,6 +105,22 @@ export function ProgramPage() {
 
   const currentChartLabel = selectedSnapshot ? formatSnapshotLabel(selectedSnapshot.date) : 'Current';
   const todaySnapshot = snapshots.find((snapshot) => snapshot.date === todayKey());
+
+  function upsertSnapshot(updated: ProgramMetricSnapshot) {
+    setSnapshots((current) => {
+      const index = current.findIndex((snapshot) => snapshot.id === updated.id);
+      if (index === -1) return [updated, ...current].sort((a, b) => b.date.localeCompare(a.date));
+      return current.map((snapshot) => (snapshot.id === updated.id ? updated : snapshot));
+    });
+  }
+
+  function upsertProgressPhoto(updated: ProgressPhotoSet) {
+    setProgressPhotos((current) => {
+      const index = current.findIndex((photoSet) => photoSet.id === updated.id);
+      if (index === -1) return [updated, ...current].sort((a, b) => b.date.localeCompare(a.date));
+      return current.map((photoSet) => (photoSet.id === updated.id ? updated : photoSet));
+    });
+  }
 
   async function saveSnapshot() {
     if (!program) return;
@@ -158,9 +186,14 @@ export function ProgramPage() {
           snapshots={snapshots}
           selectedId={selectedSnapshotId}
           onSelect={setSelectedSnapshotId}
-          onUpdated={(updated) => {
-            setSnapshots((current) => current.map((snapshot) => (snapshot.id === updated.id ? updated : snapshot)));
-          }}
+          onUpdated={upsertSnapshot}
+        />
+        <SnapshotTrackingSection
+          programId={program.id}
+          snapshots={snapshots}
+          progressPhotos={progressPhotos}
+          onSnapshotUpdated={upsertSnapshot}
+          onProgressPhotosUpdated={upsertProgressPhoto}
         />
         {error && <p className="text-sm text-red-600">{error}</p>}
         {snapshotError && <p className="text-sm text-red-600">{snapshotError}</p>}
