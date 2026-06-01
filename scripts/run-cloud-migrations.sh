@@ -73,12 +73,16 @@ echo "==> Start Cloud SQL Auth Proxy on port ${PROXY_PORT}"
 PROXY_PID=$!
 trap 'kill $PROXY_PID 2>/dev/null || true' EXIT
 
+proxy_ready=false
 for _ in $(seq 1 30); do
   if python3 -c "import socket; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', int('${PROXY_PORT}'))); s.close()" 2>/dev/null; then
+    proxy_ready=true
     break
   fi
   sleep 1
-else
+done
+
+if [[ "$proxy_ready" != "true" ]]; then
   echo "Cloud SQL proxy did not become ready."
   exit 1
 fi
