@@ -7,6 +7,8 @@ const setupBody = z.object({
   programName: z.string().trim().min(1).max(120).optional(),
   weight: z.number().finite().positive().max(1000),
   goalWeight: z.number().finite().positive().max(1000),
+  bodyFat: z.number().finite().min(1).max(75).optional(),
+  goalBodyFat: z.number().finite().min(1).max(75).optional(),
   calorieTarget: z.number().finite().positive().max(10000).optional(),
   proteinTarget: z.number().finite().positive().max(1000).optional()
 });

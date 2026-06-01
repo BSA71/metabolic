@@ -30,6 +30,8 @@ enum MetricType {
   WEIGHT
   BODY_FAT
   WAIST
+  HIPS
+  CHEST
   LEAN_TISSUE_MASS
   FAT_MASS
   CALORIES
@@ -157,6 +159,7 @@ model Program {
   coach User? @relation("ProgramCoach", fields: [coachId], references: [id])
   metrics ProgramMetric[]
   metricSnapshots ProgramMetricSnapshot[]
+  progressPhotoSets ProgramProgressPhotoSet[]
   dailyLogs DailyLog[]
   scheduledExercises ScheduledExercise[]
 }
@@ -194,6 +197,19 @@ model ProgramMetricSnapshotValue {
   unit String
   snapshot ProgramMetricSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   @@unique([snapshotId, metricType])
+}
+
+model ProgramProgressPhotoSet {
+  id String @id @default(cuid())
+  programId String
+  date DateTime
+  frontUrl String?
+  sideUrl String?
+  backUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  @@unique([programId, date])
 }
 
 model DailyLog {

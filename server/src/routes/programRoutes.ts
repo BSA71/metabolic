@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/requireAuth.js';
-import { activateProgram, getProgram, listPrograms, listProgramMetricSnapshots, saveProgramMetricSnapshot, updateProgramMetricSnapshot, updateProgramMetrics } from '../services/programService.js';
+import { activateProgram, getProgram, listPrograms, listProgramMetricSnapshots, listProgressPhotoSets, saveProgramMetricSnapshot, updateProgramMetricSnapshot, updateProgramMetrics, upsertProgressPhotoSet, upsertSnapshotMeasurement } from '../services/programService.js';
 import { prisma } from '../db/prisma.js';
 
 const programBody = z.object({ name: z.string().min(1), startDate: z.string(), targetEndDate: z.string().optional().nullable() });
@@ -20,6 +20,32 @@ const snapshotBody = z.array(
     unit: z.string().min(1)
   })
 );
+
+const measurementBody = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  metricType: z.enum(['WEIGHT', 'WAIST', 'HIPS', 'CHEST']),
+  currentValue: z.number().finite().positive(),
+  unit: z.string().min(1).max(12)
+});
+
+const progressPhotoBody = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  frontUrl: z.string().optional().nullable(),
+  sideUrl: z.string().optional().nullable(),
+  backUrl: z.string().optional().nullable(),
+  id: z.string().optional()
+});
+
+function normalizePhotoUrl(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    new URL(trimmed);
+    return trimmed;
+  } catch {
+    throw new Error('Photo links must be valid URLs.');
+  }
+}
 
 function serializeSnapshot(snapshot: Awaited<ReturnType<typeof listProgramMetricSnapshots>>[number]) {
   return {
@@ -88,6 +114,51 @@ export async function programRoutes(app: FastifyInstance) {
     } catch (error) {
       request.log.error({ err: error }, 'Failed to update metric snapshot');
       return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update metric snapshot' });
+    }
+  });
+
+  app.post('/api/programs/:id/metric-snapshots/measurements', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = measurementBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Enter a valid date and measurement value.' });
+    }
+    try {
+      const snapshot = await upsertSnapshotMeasurement(request.appUser!, id, parsed.data);
+      return serializeSnapshot(snapshot);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to save tracking measurement');
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to save measurement' });
+    }
+  });
+
+  app.get('/api/programs/:id/progress-photos', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      return await listProgressPhotoSets(request.appUser!, id);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to list progress photos');
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to list progress photos' });
+    }
+  });
+
+  app.post('/api/programs/:id/progress-photos', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = progressPhotoBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Enter a valid date and photo URLs.' });
+    }
+    try {
+      return await upsertProgressPhotoSet(request.appUser!, id, {
+        id: parsed.data.id,
+        date: parsed.data.date,
+        frontUrl: normalizePhotoUrl(parsed.data.frontUrl),
+        sideUrl: normalizePhotoUrl(parsed.data.sideUrl),
+        backUrl: normalizePhotoUrl(parsed.data.backUrl)
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to save progress photos');
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to save progress photos' });
     }
   });
 

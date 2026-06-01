@@ -81,8 +81,8 @@ fi
 
 npm run build --workspace client
 
-echo "==> Deploy Firebase Hosting"
-npx --yes firebase-tools@13 deploy --only hosting --project "$PROJECT_ID"
+echo "==> Deploy Firebase Hosting and Storage rules"
+npx --yes firebase-tools@13 deploy --only hosting,storage --project "$PROJECT_ID"
 
 echo ""
 echo "Deployed."

@@ -60,5 +60,12 @@ export type Exercise = ScheduledExercise;
 export type ProgramMetric = { id: string; metricType: string; startValue: number; currentValue: number; goalValue: number; unit: string };
 export type ProgramMetricSnapshotValue = { metricType: string; currentValue: number; unit: string };
 export type ProgramMetricSnapshot = { id: string; date: string; values: ProgramMetricSnapshotValue[] };
+export type ProgressPhotoSet = {
+  id: string;
+  date: string;
+  frontUrl: string | null;
+  sideUrl: string | null;
+  backUrl: string | null;
+};
 export type Program = { id: string; name: string; status: string; startDate: string; targetEndDate?: string; metrics: ProgramMetric[] };
 export type Dashboard = { program: Program | null; dailyLog: any; meals: Meal[]; exercises: Exercise[]; summary: { currentWeight: number; caloriesRemaining: number; proteinRemaining: number; nextMeal: string; exercisesLeft: number; goalProgress: number } | null; weightTrend: { date: string; weight: number }[] };
