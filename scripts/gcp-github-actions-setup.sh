@@ -74,6 +74,7 @@ DEPLOY_ROLES=(
   roles/iam.serviceAccountUser
   roles/secretmanager.secretAccessor
   roles/cloudsql.client
+  roles/firebase.admin
   roles/firebasehosting.admin
   roles/firebasestorage.admin
   roles/serviceusage.serviceUsageConsumer

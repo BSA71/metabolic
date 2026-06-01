@@ -88,6 +88,9 @@ fi
 
 npm run build --workspace client
 
+echo "==> Ensure Firebase Storage is initialized"
+"$ROOT_DIR/scripts/ensure-firebase-storage.sh"
+
 echo "==> Deploy Firebase Hosting and Storage rules"
 npx --yes firebase-tools@13 deploy --only hosting,storage --project "$PROJECT_ID"
 
