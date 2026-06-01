@@ -43,7 +43,7 @@ async function seedDefaultExercises(userId: string, programId: string, date: Dat
   });
   if (existing) return;
 
-  for (const definition of DEFAULT_EXERCISES) {
+  for (const [index, definition] of DEFAULT_EXERCISES.entries()) {
     const exercise = await findOrCreateExercise(definition);
     await prisma.scheduledExercise.create({
       data: {
@@ -54,7 +54,8 @@ async function seedDefaultExercises(userId: string, programId: string, date: Dat
         sets: exercise.defaultSets,
         reps: exercise.defaultReps,
         durationMinutes: exercise.defaultDurationMinutes,
-        status: 'PLANNED'
+        status: 'PLANNED',
+        sortOrder: index
       }
     });
   }

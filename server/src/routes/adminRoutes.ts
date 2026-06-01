@@ -20,6 +20,19 @@ import {
   updateTemplateMeal,
   updateTemplateMealItem
 } from '../services/nutritionTemplateService.js';
+import {
+  addTemplateItem,
+  cloneDailyLogToTemplate as cloneDailyLogToExerciseTemplate,
+  cloneTemplate as cloneExerciseTemplate,
+  createTemplate as createExerciseTemplate,
+  deleteTemplate as deleteExerciseTemplate,
+  deleteTemplateItem,
+  getTemplate as getExerciseTemplate,
+  listTemplatesForAdmin as listExerciseTemplatesForAdmin,
+  reorderTemplateItems,
+  updateTemplate as updateExerciseTemplate,
+  updateTemplateItem
+} from '../services/exerciseTemplateService.js';
 
 const adminOnly = [requireAuth, requireRole(['SUPER_ADMIN', 'ADMIN'])];
 
@@ -129,6 +142,43 @@ const templateMealItemUpdateBody = z
     fat: z.number().finite().min(0).optional()
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+
+const templateExerciseItemBody = z.object({
+  exerciseId: z.string().trim().min(1),
+  sets: z.number().int().min(0).nullable().optional(),
+  reps: z.number().int().min(0).nullable().optional(),
+  durationMinutes: z.number().int().min(0).nullable().optional(),
+  distance: z.number().finite().min(0).nullable().optional(),
+  weight: z.number().finite().min(0).nullable().optional()
+});
+
+const templateExerciseItemUpdateBody = z
+  .object({
+    sets: z.number().int().min(0).nullable().optional(),
+    reps: z.number().int().min(0).nullable().optional(),
+    durationMinutes: z.number().int().min(0).nullable().optional(),
+    distance: z.number().finite().min(0).nullable().optional(),
+    weight: z.number().finite().min(0).nullable().optional()
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+
+const exerciseTemplateCreateBody = z.object({
+  name: z.string().trim().min(1),
+  description: z.string().trim().nullable().optional(),
+  visibility: z.nativeEnum(Visibility).optional()
+});
+
+const exerciseTemplateUpdateBody = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    description: z.string().trim().nullable().optional(),
+    visibility: z.nativeEnum(Visibility).optional()
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+
+const exerciseTemplateReorderBody = z.object({
+  orderedIds: z.array(z.string()).min(1)
+});
 
 export async function adminRoutes(app: FastifyInstance) {
   app.get('/api/admin/users', { preHandler: adminOnly }, async () => listAdminUsers());
@@ -346,6 +396,124 @@ export async function adminRoutes(app: FastifyInstance) {
       return reply.code(204).send();
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to delete item' });
+    }
+  });
+
+  app.get('/api/admin/exercise-templates', { preHandler: adminOnly }, async () => listExerciseTemplatesForAdmin());
+
+  app.get('/api/admin/exercise-templates/:id', { preHandler: adminOnly }, async (request, reply) => {
+    try {
+      return await getExerciseTemplate((request.params as { id: string }).id);
+    } catch {
+      return reply.code(404).send({ error: 'Template not found' });
+    }
+  });
+
+  app.post('/api/admin/exercise-templates', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = exerciseTemplateCreateBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid template' });
+    }
+    try {
+      return await createExerciseTemplate({ ...parsed.data, createdById: request.appUser!.id });
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to create template' });
+    }
+  });
+
+  app.patch('/api/admin/exercise-templates/:id', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = exerciseTemplateUpdateBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid template update' });
+    }
+    try {
+      return await updateExerciseTemplate((request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update template' });
+    }
+  });
+
+  app.delete('/api/admin/exercise-templates/:id', { preHandler: adminOnly }, async (request, reply) => {
+    try {
+      await deleteExerciseTemplate((request.params as { id: string }).id);
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to delete template' });
+    }
+  });
+
+  app.post('/api/admin/exercise-templates/:id/clone', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateCloneBody.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid clone request' });
+    }
+    try {
+      return await cloneExerciseTemplate((request.params as { id: string }).id, {
+        name: parsed.data.name,
+        createdById: request.appUser!.id
+      });
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to clone template' });
+    }
+  });
+
+  app.post('/api/admin/exercise-templates/clone-from-daily-log', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = cloneDailyLogBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid clone request' });
+    }
+    try {
+      return await cloneDailyLogToExerciseTemplate(parsed.data.userId, parsed.data.date, {
+        name: parsed.data.name,
+        createdById: request.appUser!.id
+      });
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to clone daily log' });
+    }
+  });
+
+  app.post('/api/admin/exercise-templates/:id/items', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateExerciseItemBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid exercise item' });
+    }
+    try {
+      return await addTemplateItem((request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to add exercise' });
+    }
+  });
+
+  app.patch('/api/admin/exercise-template-items/:id', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateExerciseItemUpdateBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid exercise update' });
+    }
+    try {
+      return await updateTemplateItem((request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update exercise' });
+    }
+  });
+
+  app.delete('/api/admin/exercise-template-items/:id', { preHandler: adminOnly }, async (request, reply) => {
+    try {
+      await deleteTemplateItem((request.params as { id: string }).id);
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to delete exercise' });
+    }
+  });
+
+  app.post('/api/admin/exercise-templates/:id/reorder', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = exerciseTemplateReorderBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid reorder request' });
+    }
+    try {
+      return await reorderTemplateItems((request.params as { id: string }).id, parsed.data.orderedIds);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to reorder exercises' });
     }
   });
 }

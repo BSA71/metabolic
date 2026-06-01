@@ -8,12 +8,13 @@ async function main() {
   await prisma.aiFoodLookup.deleteMany();
   await prisma.exerciseLog.deleteMany();
   await prisma.scheduledExercise.deleteMany();
+  await prisma.program.updateMany({ data: { defaultNutritionTemplateId: null, defaultExerciseTemplateId: null } });
+  await prisma.exerciseTemplate.deleteMany();
   await prisma.exercise.deleteMany();
   await prisma.mealItem.deleteMany();
   await prisma.meal.deleteMany();
   await prisma.dailyLog.deleteMany();
   await prisma.programMetric.deleteMany();
-  await prisma.program.updateMany({ data: { defaultNutritionTemplateId: null } });
   await prisma.nutritionPlanTemplate.deleteMany();
   await prisma.program.deleteMany();
   await prisma.foodAlias.deleteMany();
@@ -83,14 +84,59 @@ async function main() {
     prisma.exercise.create({ data: { name: 'Mobility flow', category: 'Recovery', defaultDurationMinutes: 15 } })
   ]);
   for (const [index, exercise] of exercises.entries()) {
-    const scheduled = await prisma.scheduledExercise.create({ data: { programId: program.id, userId: user.id, exerciseId: exercise.id, scheduledDate: today, sets: exercise.defaultSets, reps: exercise.defaultReps, durationMinutes: exercise.defaultDurationMinutes, status: index === 0 ? 'DONE' : 'PLANNED' } });
+    const scheduled = await prisma.scheduledExercise.create({
+      data: {
+        programId: program.id,
+        userId: user.id,
+        exerciseId: exercise.id,
+        scheduledDate: today,
+        sets: exercise.defaultSets,
+        reps: exercise.defaultReps,
+        durationMinutes: exercise.defaultDurationMinutes,
+        status: index === 0 ? 'DONE' : 'PLANNED',
+        sortOrder: index
+      }
+    });
     if (index === 0) await prisma.exerciseLog.create({ data: { scheduledExerciseId: scheduled.id, userId: user.id, completed: true, completedAt: new Date(), actualDurationMinutes: 30, difficulty: 'NORMAL' } });
   }
 
   await prisma.dailyLog.update({ where: { id: log.id }, data: { caloriesActual: 710, proteinActual: 69, carbsActual: 67, fatActual: 16, mealsCompleted: 2, exercisesCompleted: 1, complianceScore: 33 } });
   await prisma.programTemplate.create({ data: { name: 'Fat Loss Foundation', description: 'Balanced macro plan with five meals and daily movement.', defaultCalories: 2200, defaultProtein: 190, defaultCarbs: 190, defaultFat: 70, defaultMealCount: 5 } });
   await prisma.mealTemplate.create({ data: { userId: user.id, name: 'Chicken and Rice Lunch', description: 'Simple high-protein lunch template.' } });
-  await prisma.exerciseTemplate.create({ data: { name: 'Daily Movement Checklist', description: 'Walk, squat, push, mobility.' } });
+
+  await prisma.exerciseTemplate.create({
+    data: {
+      name: 'Daily Movement Checklist',
+      description: 'Walk, squat, push, mobility.',
+      visibility: 'GLOBAL',
+      createdById: admin.id,
+      items: {
+        create: exercises.map((exercise, index) => ({
+          exerciseId: exercise.id,
+          sortOrder: index,
+          sets: exercise.defaultSets,
+          reps: exercise.defaultReps,
+          durationMinutes: exercise.defaultDurationMinutes
+        }))
+      }
+    }
+  });
+
+  await prisma.exerciseTemplate.create({
+    data: {
+      name: 'Strength Focus',
+      description: 'Strength-heavy day with a cardio finisher.',
+      visibility: 'GLOBAL',
+      createdById: admin.id,
+      items: {
+        create: [
+          { exerciseId: exercises[1].id, sortOrder: 0, sets: 4, reps: 8 },
+          { exerciseId: exercises[2].id, sortOrder: 1, sets: 4, reps: 10 },
+          { exerciseId: exercises[0].id, sortOrder: 2, durationMinutes: 20 }
+        ]
+      }
+    }
+  });
 
   await prisma.nutritionPlanTemplate.create({
     data: {
