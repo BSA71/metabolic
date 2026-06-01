@@ -5,6 +5,21 @@ import { requireAuth } from '../auth/requireAuth.js';
 import { requireRole } from '../auth/requireRole.js';
 import { prisma } from '../db/prisma.js';
 import { listAdminFoods, listAdminFoodReviewQueue, listAdminUsers, serializeAdminFood, serializeReviewFood, approveAdminFood, rejectAdminFood, updateAdminFood, updateAdminUser } from '../services/adminService.js';
+import {
+  addTemplateMealItem,
+  cloneDailyLogToTemplate,
+  cloneTemplate,
+  createTemplate,
+  createTemplateMeal,
+  deleteTemplate,
+  deleteTemplateMeal,
+  deleteTemplateMealItem,
+  getTemplate,
+  listTemplatesForAdmin,
+  updateTemplate,
+  updateTemplateMeal,
+  updateTemplateMealItem
+} from '../services/nutritionTemplateService.js';
 
 const adminOnly = [requireAuth, requireRole(['SUPER_ADMIN', 'ADMIN'])];
 
@@ -46,6 +61,74 @@ const foodApproveBody = z.object({
   fat: z.number().finite().min(0).optional(),
   visibility: z.nativeEnum(Visibility).optional()
 });
+
+const templateCreateBody = z.object({
+  name: z.string().trim().min(1),
+  description: z.string().trim().nullable().optional(),
+  visibility: z.nativeEnum(Visibility).optional(),
+  calorieTarget: z.number().finite().min(0).optional(),
+  proteinTarget: z.number().finite().min(0).optional(),
+  carbTarget: z.number().finite().min(0).optional(),
+  fatTarget: z.number().finite().min(0).optional()
+});
+
+const templateUpdateBody = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    description: z.string().trim().nullable().optional(),
+    visibility: z.nativeEnum(Visibility).optional(),
+    calorieTarget: z.number().finite().min(0).optional(),
+    proteinTarget: z.number().finite().min(0).optional(),
+    carbTarget: z.number().finite().min(0).optional(),
+    fatTarget: z.number().finite().min(0).optional()
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+
+const templateCloneBody = z.object({ name: z.string().trim().min(1).optional() });
+
+const cloneDailyLogBody = z.object({
+  userId: z.string().trim().min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  name: z.string().trim().min(1)
+});
+
+const templateMealCreateBody = z.object({
+  name: z.string().trim().min(1),
+  mealNumber: z.number().int().min(1),
+  plannedTime: z.string().trim().nullable().optional()
+});
+
+const templateMealUpdateBody = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    mealNumber: z.number().int().min(1).optional(),
+    plannedTime: z.string().trim().nullable().optional()
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+
+const templateMealItemBody = z.object({
+  foodId: z.string().trim().optional(),
+  nameSnapshot: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
+  quantity: z.number().finite().positive().optional(),
+  unit: z.string().trim().min(1).optional(),
+  calories: z.number().finite().min(0).optional(),
+  protein: z.number().finite().min(0).optional(),
+  carbs: z.number().finite().min(0).optional(),
+  fat: z.number().finite().min(0).optional()
+});
+
+const templateMealItemUpdateBody = z
+  .object({
+    nameSnapshot: z.string().trim().min(1).optional(),
+    quantity: z.number().finite().positive().optional(),
+    unit: z.string().trim().min(1).optional(),
+    calories: z.number().finite().min(0).optional(),
+    protein: z.number().finite().min(0).optional(),
+    carbs: z.number().finite().min(0).optional(),
+    fat: z.number().finite().min(0).optional()
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
 
 export async function adminRoutes(app: FastifyInstance) {
   app.get('/api/admin/users', { preHandler: adminOnly }, async () => listAdminUsers());
@@ -126,4 +209,143 @@ export async function adminRoutes(app: FastifyInstance) {
     activePrograms: await prisma.program.count({ where: { status: 'ACTIVE' } }),
     foodsPendingReview: await prisma.food.count({ where: { aiGenerated: true, verified: false } })
   }));
+
+  app.get('/api/admin/nutrition-templates', { preHandler: adminOnly }, async () => listTemplatesForAdmin());
+
+  app.get('/api/admin/nutrition-templates/:id', { preHandler: adminOnly }, async (request, reply) => {
+    try {
+      return await getTemplate((request.params as { id: string }).id);
+    } catch {
+      return reply.code(404).send({ error: 'Template not found' });
+    }
+  });
+
+  app.post('/api/admin/nutrition-templates', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateCreateBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid template' });
+    }
+    try {
+      return await createTemplate({ ...parsed.data, createdById: request.appUser!.id });
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to create template' });
+    }
+  });
+
+  app.patch('/api/admin/nutrition-templates/:id', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateUpdateBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid template update' });
+    }
+    try {
+      return await updateTemplate((request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update template' });
+    }
+  });
+
+  app.delete('/api/admin/nutrition-templates/:id', { preHandler: adminOnly }, async (request, reply) => {
+    try {
+      await deleteTemplate((request.params as { id: string }).id);
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to delete template' });
+    }
+  });
+
+  app.post('/api/admin/nutrition-templates/:id/clone', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateCloneBody.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid clone request' });
+    }
+    try {
+      return await cloneTemplate((request.params as { id: string }).id, {
+        name: parsed.data.name,
+        createdById: request.appUser!.id
+      });
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to clone template' });
+    }
+  });
+
+  app.post('/api/admin/nutrition-templates/clone-from-daily-log', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = cloneDailyLogBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid clone request' });
+    }
+    try {
+      return await cloneDailyLogToTemplate(parsed.data.userId, parsed.data.date, {
+        name: parsed.data.name,
+        createdById: request.appUser!.id
+      });
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to clone daily log' });
+    }
+  });
+
+  app.post('/api/admin/nutrition-templates/:id/meals', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateMealCreateBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid meal' });
+    }
+    try {
+      return await createTemplateMeal((request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to add meal' });
+    }
+  });
+
+  app.patch('/api/admin/nutrition-template-meals/:id', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateMealUpdateBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid meal update' });
+    }
+    try {
+      return await updateTemplateMeal((request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update meal' });
+    }
+  });
+
+  app.delete('/api/admin/nutrition-template-meals/:id', { preHandler: adminOnly }, async (request, reply) => {
+    try {
+      await deleteTemplateMeal((request.params as { id: string }).id);
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to delete meal' });
+    }
+  });
+
+  app.post('/api/admin/nutrition-template-meals/:id/items', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateMealItemBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid item' });
+    }
+    try {
+      return await addTemplateMealItem((request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to add item' });
+    }
+  });
+
+  app.patch('/api/admin/nutrition-template-meal-items/:id', { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = templateMealItemUpdateBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid item update' });
+    }
+    try {
+      return await updateTemplateMealItem((request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update item' });
+    }
+  });
+
+  app.delete('/api/admin/nutrition-template-meal-items/:id', { preHandler: adminOnly }, async (request, reply) => {
+    try {
+      await deleteTemplateMealItem((request.params as { id: string }).id);
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to delete item' });
+    }
+  });
 }

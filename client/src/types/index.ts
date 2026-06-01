@@ -68,4 +68,40 @@ export type ProgressPhotoSet = {
   backUrl: string | null;
 };
 export type Program = { id: string; name: string; status: string; startDate: string; targetEndDate?: string; metrics: ProgramMetric[] };
+export type NutritionTemplateMealItem = {
+  id: string;
+  foodId?: string | null;
+  nameSnapshot: string;
+  quantity: number;
+  unit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+};
+export type NutritionTemplateMeal = {
+  id: string;
+  mealNumber: number;
+  name: string;
+  plannedTime?: string | null;
+  items: NutritionTemplateMealItem[];
+};
+export type NutritionPlanTemplateSummary = {
+  id: string;
+  name: string;
+  description?: string | null;
+  visibility: FoodVisibility;
+  calorieTarget: number;
+  proteinTarget: number;
+  carbTarget: number;
+  fatTarget: number;
+  mealCount: number;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type NutritionPlanTemplate = NutritionPlanTemplateSummary & {
+  createdById?: string | null;
+  meals: NutritionTemplateMeal[];
+};
 export type Dashboard = { program: Program | null; dailyLog: any; meals: Meal[]; exercises: Exercise[]; summary: { currentWeight: number; caloriesRemaining: number; proteinRemaining: number; nextMeal: string; exercisesLeft: number; goalProgress: number } | null; weightTrend: { date: string; weight: number }[] };

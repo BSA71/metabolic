@@ -12,6 +12,8 @@ import { ExercisePage } from './pages/ExercisePage';
 import { ProgressPage } from './pages/ProgressPage';
 import { AssistantPage } from './pages/AssistantPage';
 import { AdminPage } from './pages/AdminPage';
+import { AdminNutritionTemplatesPage } from './pages/AdminNutritionTemplatesPage';
+import { AdminNutritionTemplateEditorPage } from './pages/AdminNutritionTemplateEditorPage';
 import { LoginPage } from './pages/LoginPage';
 import { FirstTimeSetupPage } from './pages/FirstTimeSetupPage';
 import { CampaignPolicyPage } from './pages/CampaignPolicyPage';
@@ -62,7 +64,7 @@ function SetupRoute({
   return <FirstTimeSetupPage user={appUser} onComplete={onComplete} />;
 }
 
-function AdminRoute({ appUser }: { appUser: AppUser | null }) {
+function AdminRoute({ appUser, children }: { appUser: AppUser | null; children?: React.ReactNode }) {
   if (!isAdminRole(appUser?.role)) {
     return (
       <div className="rounded-2xl border border-brand-gold/40 bg-brand-gold/10 p-6 text-brand-navy dark:text-brand-off-white">
@@ -74,7 +76,7 @@ function AdminRoute({ appUser }: { appUser: AppUser | null }) {
       </div>
     );
   }
-  return <AdminPage />;
+  return children ?? <AdminPage />;
 }
 
 export default function App() {
@@ -159,6 +161,8 @@ export default function App() {
           <Route path="progress" element={<ProgressPage />} />
           <Route path="assistant" element={<AssistantPage />} />
           <Route path="admin" element={<AdminRoute appUser={appUser} />} />
+          <Route path="admin/nutrition-templates" element={<AdminRoute appUser={appUser}><AdminNutritionTemplatesPage /></AdminRoute>} />
+          <Route path="admin/nutrition-templates/:id" element={<AdminRoute appUser={appUser}><AdminNutritionTemplateEditorPage /></AdminRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>

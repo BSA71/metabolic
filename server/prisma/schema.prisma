@@ -109,6 +109,7 @@ model User {
   coachAssignments CoachAssignment[] @relation("CoachAssignments")
   userAssignments CoachAssignment[] @relation("UserAssignments")
   mealTemplates MealTemplate[]
+  nutritionPlanTemplatesCreated NutritionPlanTemplate[] @relation("NutritionPlanTemplateCreator")
 }
 
 model Organization {
@@ -162,6 +163,8 @@ model Program {
   progressPhotoSets ProgramProgressPhotoSet[]
   dailyLogs DailyLog[]
   scheduledExercises ScheduledExercise[]
+  defaultNutritionTemplateId String?
+  defaultNutritionTemplate NutritionPlanTemplate? @relation(fields: [defaultNutritionTemplateId], references: [id], onDelete: SetNull)
 }
 
 model ProgramMetric {
@@ -311,6 +314,7 @@ model Food {
   createdBy User? @relation("FoodCreator", fields: [createdById], references: [id])
   aliases FoodAlias[]
   mealItems MealItem[]
+  nutritionTemplateMealItems NutritionTemplateMealItem[]
   lookups AiFoodLookup[]
 }
 
@@ -459,4 +463,51 @@ model ExerciseTemplate {
   visibility Visibility @default(GLOBAL)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model NutritionPlanTemplate {
+  id String @id @default(cuid())
+  name String
+  description String?
+  visibility Visibility @default(GLOBAL)
+  calorieTarget Decimal @db.Decimal(10, 2)
+  proteinTarget Decimal @db.Decimal(10, 2)
+  carbTarget Decimal @db.Decimal(10, 2)
+  fatTarget Decimal @db.Decimal(10, 2)
+  createdById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy User? @relation("NutritionPlanTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  meals NutritionTemplateMeal[]
+  programs Program[]
+}
+
+model NutritionTemplateMeal {
+  id String @id @default(cuid())
+  templateId String
+  mealNumber Int
+  name String
+  plannedTime String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  template NutritionPlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  items NutritionTemplateMealItem[]
+  @@unique([templateId, mealNumber])
+}
+
+model NutritionTemplateMealItem {
+  id String @id @default(cuid())
+  mealId String
+  foodId String?
+  nameSnapshot String
+  quantity Decimal @db.Decimal(10, 2)
+  unit String
+  calories Decimal @db.Decimal(10, 2)
+  protein Decimal @db.Decimal(10, 2)
+  carbs Decimal @db.Decimal(10, 2)
+  fat Decimal @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  meal NutritionTemplateMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food Food? @relation(fields: [foodId], references: [id])
 }
