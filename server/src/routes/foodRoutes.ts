@@ -8,8 +8,25 @@ const foodBody = z.object({ name: z.string(), servingSize: z.number().default(1)
 
 export async function foodRoutes(app: FastifyInstance) {
   app.get('/api/foods', { preHandler: requireAuth }, async (request) => {
-    const query = String((request.query as { query?: string }).query ?? '');
-    return prisma.food.findMany({ where: { name: { contains: query, mode: 'insensitive' }, OR: [{ visibility: 'GLOBAL' }, { ownerUserId: request.appUser!.id }] }, take: 25 });
+    const query = String((request.query as { query?: string }).query ?? '').trim();
+    if (query.length < 2) return [];
+
+    return prisma.food.findMany({
+      where: {
+        AND: [
+          {
+            OR: [
+              { name: { contains: query, mode: 'insensitive' } },
+              { brand: { contains: query, mode: 'insensitive' } },
+              { aliases: { some: { alias: { contains: query, mode: 'insensitive' } } } }
+            ]
+          },
+          { OR: [{ visibility: 'GLOBAL' }, { ownerUserId: request.appUser!.id }] }
+        ]
+      },
+      take: 25,
+      orderBy: { name: 'asc' }
+    });
   });
   app.post('/api/foods', { preHandler: requireAuth }, async (request) => {
     const body = foodBody.parse(request.body);

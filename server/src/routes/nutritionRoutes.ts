@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth } from '../auth/requireAuth.js';
 import { addMealItem, copyMealFromPreviousDay, createMeal, deleteMealItem, getMealsForDate, markMealEatenAsPlanned, setPlannedItemLogged, updateMealItem } from '../services/nutritionService.js';
 import { ensureDailyLogByUserId } from '../services/dailyLogService.js';
+import { applyTemplateToDailyLog, getProgramDefaultTemplate, listTemplatesForUser } from '../services/nutritionTemplateService.js';
 import { prisma } from '../db/prisma.js';
 
 export async function nutritionRoutes(app: FastifyInstance) {
@@ -32,4 +33,29 @@ export async function nutritionRoutes(app: FastifyInstance) {
     return { ok: true };
   });
   app.delete('/api/meal-items/:id', { preHandler: requireAuth }, async (request) => deleteMealItem(request.appUser!.id, (request.params as { id: string }).id));
+
+  app.get('/api/nutrition-templates', { preHandler: requireAuth }, async () => listTemplatesForUser());
+
+  app.get('/api/nutrition-templates/default', { preHandler: requireAuth }, async (request) =>
+    getProgramDefaultTemplate(request.appUser!.id)
+  );
+
+  app.post('/api/daily-logs/:date/apply-template', { preHandler: requireAuth }, async (request, reply) => {
+    const body = z
+      .object({
+        templateId: z.string().trim().min(1),
+        setAsDefault: z.boolean().optional()
+      })
+      .parse(request.body);
+    try {
+      return await applyTemplateToDailyLog(
+        request.appUser!.id,
+        (request.params as { date: string }).date,
+        body.templateId,
+        { setAsDefault: body.setAsDefault }
+      );
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to apply template' });
+    }
+  });
 }

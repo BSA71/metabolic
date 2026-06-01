@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { LayoutTemplate } from 'lucide-react';
 import { api, isToday, todayKey } from '../services/api';
-import type { Meal } from '../types';
+import type { Meal, NutritionPlanTemplateSummary } from '../types';
 import { MealPlanner } from '../components/nutrition/MealPlanner';
 import { WeekDateStrip } from '../components/nutrition/WeekDateStrip';
 import { EditMealPlanDrawer } from '../components/nutrition/EditMealPlanDrawer';
 import { AiFoodLookupDrawer } from '../components/nutrition/AiFoodLookupDrawer';
+import { ApplyTemplateModal } from '../components/nutrition/ApplyTemplateModal';
+import { Button } from '../components/ui/Button';
 
 function dateFromParams(params: URLSearchParams) {
   const date = params.get('date');
@@ -20,6 +23,8 @@ export function NutritionPage() {
   const [editMealId, setEditMealId] = useState<string>();
   const [editMode, setEditMode] = useState<'PLANNED' | 'ACTUAL'>('PLANNED');
   const [aiState, setAiState] = useState<{ mealId: string; itemType: 'PLANNED' | 'ACTUAL' }>();
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [defaultTemplate, setDefaultTemplate] = useState<NutritionPlanTemplateSummary | null>(null);
 
   const load = useCallback(async (date: string) => {
     try {
@@ -47,6 +52,12 @@ export function NutritionPage() {
   useEffect(() => {
     load(selectedDate);
   }, [selectedDate, load]);
+
+  useEffect(() => {
+    api<NutritionPlanTemplateSummary | null>('/api/nutrition-templates/default')
+      .then(setDefaultTemplate)
+      .catch(() => setDefaultTemplate(null));
+  }, [selectedDate, meals]);
 
   function selectDate(date: string) {
     setSelectedDate(date);
@@ -103,7 +114,22 @@ export function NutritionPage() {
         <p className="text-slate-500">Plan meals and track what you actually ate.</p>
       </div>
 
-      <WeekDateStrip selectedDate={selectedDate} onSelectDate={selectDate} />
+      <WeekDateStrip
+        selectedDate={selectedDate}
+        onSelectDate={selectDate}
+        endAction={
+          <Button type="button" variant="secondary" onClick={() => setTemplateModalOpen(true)}>
+            <LayoutTemplate className="mr-1 inline h-4 w-4" />
+            Use template
+          </Button>
+        }
+      />
+
+      {defaultTemplate && (
+        <p className="text-sm text-slate-500">
+          Default plan: <span className="font-medium text-slate-700">{defaultTemplate.name}</span>
+        </p>
+      )}
 
       {loadError && (
         <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{loadError}</div>
@@ -147,6 +173,14 @@ export function NutritionPage() {
         itemType={aiState?.itemType ?? 'ACTUAL'}
         onClose={() => setAiState(undefined)}
         onSaved={() => load(selectedDate)}
+      />
+
+      <ApplyTemplateModal
+        open={templateModalOpen}
+        selectedDate={selectedDate}
+        meals={meals}
+        onClose={() => setTemplateModalOpen(false)}
+        onApplied={() => load(selectedDate)}
       />
     </div>
   );

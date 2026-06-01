@@ -1,6 +1,7 @@
 import { MealItemType, MealStatus, Prisma, ProgramStatus, type Program, type ProgramMetric } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { parseDateParam, startOfUtcDay, toDateKey } from '../utils/dates.js';
+import { applyDefaultTemplateToNewLogOutsideTx } from './nutritionTemplateApply.js';
 
 const DEFAULT_MEALS: [number, string, string][] = [
   [1, 'Breakfast', '07:30'],
@@ -114,6 +115,8 @@ export async function ensureDailyLog(userId: string, program: Program & { metric
       });
       if (priorLog?.meals.length) {
         await copyMealsFromLog(priorLog.id, existing.id, userId);
+      } else if (program.defaultNutritionTemplateId) {
+        await applyDefaultTemplateToNewLogOutsideTx(program, existing.id, userId);
       } else {
         await createDefaultMeals(existing.id, userId);
       }
@@ -168,6 +171,8 @@ export async function ensureDailyLog(userId: string, program: Program & { metric
 
   if (fallbackLog?.meals.length) {
     await copyMealsFromLog(fallbackLog.id, dailyLog.id, userId);
+  } else if (program.defaultNutritionTemplateId) {
+    await applyDefaultTemplateToNewLogOutsideTx(program, dailyLog.id, userId);
   } else {
     await createDefaultMeals(dailyLog.id, userId);
   }

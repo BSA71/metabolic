@@ -1,7 +1,15 @@
 import { clsx } from 'clsx';
 import { addDays, formatDayAbbrev, formatDayNumber, formatWeekRange, getWeekDates, isToday, startOfWeek } from '../../services/api';
 
-export function WeekDateStrip({ selectedDate, onSelectDate }: { selectedDate: string; onSelectDate: (date: string) => void }) {
+export function WeekDateStrip({
+  selectedDate,
+  onSelectDate,
+  endAction
+}: {
+  selectedDate: string;
+  onSelectDate: (date: string) => void;
+  endAction?: React.ReactNode;
+}) {
   const weekStart = startOfWeek(selectedDate);
   const weekDates = getWeekDates(weekStart);
 
@@ -18,7 +26,8 @@ export function WeekDateStrip({ selectedDate, onSelectDate }: { selectedDate: st
           <button type="button" onClick={() => shiftWeek(1)} className="rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-600 hover:bg-slate-50" aria-label="Next week">▶</button>
         </div>
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-1 snap-x snap-mandatory">
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 snap-x snap-mandatory">
         {weekDates.map((date) => {
           const selected = date === selectedDate;
           const today = isToday(date);
@@ -39,6 +48,8 @@ export function WeekDateStrip({ selectedDate, onSelectDate }: { selectedDate: st
             </button>
           );
         })}
+        </div>
+        {endAction && <div className="shrink-0 pb-1">{endAction}</div>}
       </div>
     </div>
   );
