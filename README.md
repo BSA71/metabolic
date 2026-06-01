@@ -81,7 +81,7 @@ cp client/.env.production.example client/.env.production
 ./scripts/gcp-deploy.sh
 ```
 
-The API runs migrations on startup via `server/docker-entrypoint.sh`. Health check: `GET /health`.
+Production deploys apply Prisma migrations before Cloud Run is updated (`scripts/run-cloud-migrations.sh` in CI and `gcp-deploy.sh`). The API also runs migrations on startup via `server/docker-entrypoint.sh` as a fallback. Health check: `GET /health`.
 
 ### Copy local database to Cloud SQL
 
