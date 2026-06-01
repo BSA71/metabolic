@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { LayoutTemplate } from 'lucide-react';
 import { api, isToday, todayKey } from '../services/api';
-import type { ScheduledExercise } from '../types';
+import type { ExercisePlanTemplateSummary, ScheduledExercise } from '../types';
 import { WeekDateStrip } from '../components/nutrition/WeekDateStrip';
 import { ExerciseChecklist } from '../components/exercise/ExerciseChecklist';
 import { ExerciseCopyMenu } from '../components/exercise/ExerciseCopyMenu';
 import { AddExerciseDrawer } from '../components/exercise/AddExerciseDrawer';
 import { EditExerciseDrawer } from '../components/exercise/EditExerciseDrawer';
+import { ApplyExerciseTemplateModal } from '../components/exercise/ApplyExerciseTemplateModal';
 import { Button } from '../components/ui/Button';
 
 function dateFromParams(params: URLSearchParams) {
@@ -24,6 +26,8 @@ export function ExercisePage() {
   const [editItem, setEditItem] = useState<ScheduledExercise>();
   const [copyDate, setCopyDate] = useState('');
   const [copying, setCopying] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [defaultTemplate, setDefaultTemplate] = useState<ExercisePlanTemplateSummary | null>(null);
 
   const load = useCallback(async (date: string) => {
     setLoadError(null);
@@ -46,6 +50,12 @@ export function ExercisePage() {
   useEffect(() => {
     void load(selectedDate);
   }, [selectedDate, load]);
+
+  useEffect(() => {
+    api<ExercisePlanTemplateSummary | null>('/api/exercise-templates/default')
+      .then(setDefaultTemplate)
+      .catch(() => setDefaultTemplate(null));
+  }, [selectedDate, exercises]);
 
   function selectDate(date: string) {
     setSearchParams(date === todayKey() ? {} : { date }, { replace: true });
@@ -92,7 +102,22 @@ export function ExercisePage() {
         <p className="text-slate-500 sm:pt-1">Plan workouts by day, then check them off as you go.</p>
       </div>
 
-      <WeekDateStrip selectedDate={selectedDate} onSelectDate={selectDate} />
+      <WeekDateStrip
+        selectedDate={selectedDate}
+        onSelectDate={selectDate}
+        endAction={
+          <Button type="button" variant="secondary" onClick={() => setTemplateModalOpen(true)}>
+            <LayoutTemplate className="mr-1 inline h-4 w-4" />
+            Use template
+          </Button>
+        }
+      />
+
+      {defaultTemplate && (
+        <p className="text-sm text-slate-500">
+          Default plan: <span className="font-medium text-slate-700">{defaultTemplate.name}</span>
+        </p>
+      )}
 
       {exercises.length > 0 && (
         <div className="space-y-2">
@@ -145,6 +170,14 @@ export function ExercisePage() {
         item={editItem}
         onClose={() => setEditItem(undefined)}
         onSaved={() => load(selectedDate)}
+      />
+
+      <ApplyExerciseTemplateModal
+        open={templateModalOpen}
+        selectedDate={selectedDate}
+        exercises={exercises}
+        onClose={() => setTemplateModalOpen(false)}
+        onApplied={() => load(selectedDate)}
       />
     </div>
   );

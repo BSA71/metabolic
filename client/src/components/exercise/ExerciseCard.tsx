@@ -97,12 +97,14 @@ export function ExerciseCard({
   item,
   selectedDate,
   onChange,
-  onEdit
+  onEdit,
+  embedded = false
 }: {
   item: ScheduledExercise;
   selectedDate: string;
   onChange: () => void | Promise<void>;
   onEdit: () => void;
+  embedded?: boolean;
 }) {
   const future = isFuture(selectedDate);
   const isPlanned = item.status === 'PLANNED';
@@ -143,22 +145,28 @@ export function ExerciseCard({
     );
   }
 
+  const cardContent = (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-4">
+          <ExerciseTitle name={item.exercise.name} bodyPart={item.exercise.bodyPart} />
+          <p className="text-sm text-slate-500 sm:min-w-0">{formatPlan(item)}</p>
+        </div>
+      </div>
+      <ExerciseActions
+        canComplete={canComplete}
+        onEdit={onEdit}
+        onDone={() => void markDone()}
+        onSkip={() => void skip()}
+      />
+    </div>
+  );
+
+  if (embedded) return cardContent;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-4">
-            <ExerciseTitle name={item.exercise.name} bodyPart={item.exercise.bodyPart} />
-            <p className="text-sm text-slate-500 sm:min-w-0">{formatPlan(item)}</p>
-          </div>
-        </div>
-        <ExerciseActions
-          canComplete={canComplete}
-          onEdit={onEdit}
-          onDone={() => void markDone()}
-          onSkip={() => void skip()}
-        />
-      </div>
+      {cardContent}
     </div>
   );
 }

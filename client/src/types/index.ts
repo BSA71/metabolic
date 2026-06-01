@@ -104,4 +104,33 @@ export type NutritionPlanTemplate = NutritionPlanTemplateSummary & {
   createdById?: string | null;
   meals: NutritionTemplateMeal[];
 };
+export type ExerciseTemplateItem = {
+  id: string;
+  exerciseId: string;
+  sortOrder: number;
+  sets?: number | null;
+  reps?: number | null;
+  durationMinutes?: number | null;
+  distance?: number | null;
+  weight?: number | null;
+  exercise: {
+    name: string;
+    category?: string | null;
+    bodyPart?: string | null;
+    description?: string | null;
+  };
+};
+export type ExercisePlanTemplateSummary = {
+  id: string;
+  name: string;
+  description?: string | null;
+  visibility: FoodVisibility;
+  exerciseCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type ExercisePlanTemplate = ExercisePlanTemplateSummary & {
+  createdById?: string | null;
+  items: ExerciseTemplateItem[];
+};
 export type Dashboard = { program: Program | null; dailyLog: any; meals: Meal[]; exercises: Exercise[]; summary: { currentWeight: number; caloriesRemaining: number; proteinRemaining: number; nextMeal: string; exercisesLeft: number; goalProgress: number } | null; weightTrend: { date: string; weight: number }[] };

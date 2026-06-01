@@ -16,7 +16,7 @@ export async function getTodayDashboard(userId: string) {
   const dailyLog = await ensureTodayDailyLog(userId, program);
   const [meals, rawExercises, weightTrend] = await Promise.all([
     prisma.meal.findMany({ where: { dailyLogId: dailyLog.id }, include: { items: true }, orderBy: { mealNumber: 'asc' } }),
-    prisma.scheduledExercise.findMany({ where: { userId, scheduledDate: today }, include: { exercise: true }, orderBy: { createdAt: 'asc' } }),
+    prisma.scheduledExercise.findMany({ where: { userId, scheduledDate: today }, include: { exercise: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
     prisma.dailyLog.findMany({ where: { userId, weight: { not: null } }, orderBy: { date: 'asc' }, take: 30 })
   ]);
   const exercises = sortScheduledExercises(rawExercises);

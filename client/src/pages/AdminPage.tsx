@@ -18,7 +18,7 @@ const cards = [
 
 type AdminSection = (typeof cards)[number];
 
-const interactiveSections = new Set<AdminSection>(['Users', 'Food Database', 'AI Review Queue', 'Nutrition Templates']);
+const interactiveSections = new Set<AdminSection>(['Users', 'Food Database', 'AI Review Queue', 'Nutrition Templates', 'Exercise Templates']);
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -27,6 +27,10 @@ export function AdminPage() {
   function toggleSection(section: AdminSection) {
     if (section === 'Nutrition Templates') {
       navigate('/admin/nutrition-templates');
+      return;
+    }
+    if (section === 'Exercise Templates') {
+      navigate('/admin/exercise-templates');
       return;
     }
     if (!interactiveSections.has(section)) return;

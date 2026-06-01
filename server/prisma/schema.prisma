@@ -110,6 +110,7 @@ model User {
   userAssignments CoachAssignment[] @relation("UserAssignments")
   mealTemplates MealTemplate[]
   nutritionPlanTemplatesCreated NutritionPlanTemplate[] @relation("NutritionPlanTemplateCreator")
+  exerciseTemplatesCreated ExerciseTemplate[] @relation("ExerciseTemplateCreator")
 }
 
 model Organization {
@@ -165,6 +166,8 @@ model Program {
   scheduledExercises ScheduledExercise[]
   defaultNutritionTemplateId String?
   defaultNutritionTemplate NutritionPlanTemplate? @relation(fields: [defaultNutritionTemplateId], references: [id], onDelete: SetNull)
+  defaultExerciseTemplateId String?
+  defaultExerciseTemplate ExerciseTemplate? @relation(fields: [defaultExerciseTemplateId], references: [id], onDelete: SetNull)
 }
 
 model ProgramMetric {
@@ -341,6 +344,7 @@ model Exercise {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   scheduledExercises ScheduledExercise[]
+  templateItems ExerciseTemplateItem[]
   aiLookups AiExerciseLookup[]
 }
 
@@ -356,6 +360,7 @@ model ScheduledExercise {
   distance Decimal? @db.Decimal(10, 2)
   weight Decimal? @db.Decimal(10, 2)
   status ExerciseStatus @default(PLANNED)
+  sortOrder Int @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
@@ -461,8 +466,28 @@ model ExerciseTemplate {
   name String
   description String?
   visibility Visibility @default(GLOBAL)
+  createdById String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  createdBy User? @relation("ExerciseTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  items ExerciseTemplateItem[]
+  programs Program[]
+}
+
+model ExerciseTemplateItem {
+  id String @id @default(cuid())
+  templateId String
+  exerciseId String
+  sortOrder Int @default(0)
+  sets Int?
+  reps Int?
+  durationMinutes Int?
+  distance Decimal? @db.Decimal(10, 2)
+  weight Decimal? @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  template ExerciseTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
 }
 
 model NutritionPlanTemplate {

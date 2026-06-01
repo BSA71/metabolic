@@ -2,6 +2,7 @@ import { MealItemType, MealStatus, Prisma, ProgramStatus, type Program, type Pro
 import { prisma } from '../db/prisma.js';
 import { parseDateParam, startOfUtcDay, toDateKey } from '../utils/dates.js';
 import { applyDefaultTemplateToNewLogOutsideTx } from './nutritionTemplateApply.js';
+import { applyDefaultTemplateToNewDayOutsideTx } from './exerciseTemplateApply.js';
 
 const DEFAULT_MEALS: [number, string, string][] = [
   [1, 'Breakfast', '07:30'],
@@ -74,15 +75,10 @@ async function copyExercisesForDate(programId: string, userId: string, targetDat
 
   const templateExercises = await prisma.scheduledExercise.findMany({
     where: { userId, programId, scheduledDate: latestExerciseDay.scheduledDate },
-    orderBy: { createdAt: 'asc' }
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
   });
 
   if (!templateExercises.length) return;
-
-  const existing = await prisma.scheduledExercise.count({
-    where: { userId, programId, scheduledDate: targetDate }
-  });
-  if (existing) return;
 
   await prisma.scheduledExercise.createMany({
     data: templateExercises.map((exercise) => ({
@@ -95,9 +91,28 @@ async function copyExercisesForDate(programId: string, userId: string, targetDat
       durationMinutes: exercise.durationMinutes,
       distance: exercise.distance,
       weight: exercise.weight,
-      status: 'PLANNED'
+      status: 'PLANNED',
+      sortOrder: exercise.sortOrder
     }))
   });
+}
+
+async function seedExercisesForDate(
+  program: { id: string; defaultExerciseTemplateId: string | null },
+  userId: string,
+  targetDate: Date
+) {
+  const existing = await prisma.scheduledExercise.count({
+    where: { userId, programId: program.id, scheduledDate: targetDate }
+  });
+  if (existing) return;
+
+  if (program.defaultExerciseTemplateId) {
+    await applyDefaultTemplateToNewDayOutsideTx(program, userId, targetDate);
+    return;
+  }
+
+  await copyExercisesForDate(program.id, userId, targetDate);
 }
 
 export async function ensureDailyLog(userId: string, program: Program & { metrics: ProgramMetric[] }, targetDate: Date) {
@@ -177,7 +192,7 @@ export async function ensureDailyLog(userId: string, program: Program & { metric
     await createDefaultMeals(dailyLog.id, userId);
   }
 
-  await copyExercisesForDate(program.id, userId, day);
+  await seedExercisesForDate(program, userId, day);
 
   return dailyLog;
 }
