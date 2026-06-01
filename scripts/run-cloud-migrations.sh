@@ -6,8 +6,19 @@ PROJECT_ID="${PROJECT_ID:-metabolic-v1}"
 REGION="${REGION:-us-central1}"
 SQL_INSTANCE="${SQL_INSTANCE:-metabolic-db}"
 CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
-PROXY_PORT="${PROXY_PORT:-5432}"
+SOCKET_DIR="${CLOUDSQL_SOCKET_DIR:-/tmp/cloudsql}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PROXY_LOG="${ROOT_DIR}/.tmp/cloud-sql-proxy.log"
+SOCKET_FILE="${SOCKET_DIR}/${CONNECTION}/.s.PGSQL.5432"
+
+fail_with_proxy_logs() {
+  echo "$1"
+  if [[ -f "$PROXY_LOG" ]]; then
+    echo "Cloud SQL proxy logs:"
+    cat "$PROXY_LOG"
+  fi
+  exit 1
+}
 
 echo "==> Run database migrations"
 
@@ -42,49 +53,51 @@ fi
 RAW_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project="$PROJECT_ID")"
 
 MIGRATION_URL="$(
-  RAW_DATABASE_URL="$RAW_URL" PROXY_PORT="$PROXY_PORT" python3 <<'PY'
+  RAW_DATABASE_URL="$RAW_URL" SOCKET_DIR="$SOCKET_DIR" CONNECTION="$CONNECTION" python3 <<'PY'
 import os
 import urllib.parse
 
 raw = os.environ["RAW_DATABASE_URL"]
-port = os.environ["PROXY_PORT"]
+socket_dir = os.environ["SOCKET_DIR"]
+connection = os.environ["CONNECTION"]
 parsed = urllib.parse.urlparse(raw)
-
-if "@" in parsed.netloc:
-    auth, _host = parsed.netloc.rsplit("@", 1)
-    netloc = f"{auth}@127.0.0.1:{port}"
-else:
-    netloc = f"127.0.0.1:{port}"
-
 query = urllib.parse.parse_qs(parsed.query)
-query.pop("host", None)
+query["host"] = [f"{socket_dir}/{connection}"]
 new_query = urllib.parse.urlencode(query, doseq=True)
 
 print(
     urllib.parse.urlunparse(
-        (parsed.scheme, netloc, parsed.path, parsed.params, new_query, parsed.fragment)
+        (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
     )
 )
 PY
 )"
 
-echo "==> Start Cloud SQL Auth Proxy on port ${PROXY_PORT}"
-"$PROXY_BIN" "$CONNECTION" --port "$PROXY_PORT" &
+mkdir -p "$SOCKET_DIR" "${ROOT_DIR}/.tmp"
+
+echo "==> Start Cloud SQL Auth Proxy (unix socket: ${SOCKET_DIR})"
+"$PROXY_BIN" "$CONNECTION" --unix-socket "$SOCKET_DIR" >"$PROXY_LOG" 2>&1 &
 PROXY_PID=$!
 trap 'kill $PROXY_PID 2>/dev/null || true' EXIT
 
 proxy_ready=false
-for _ in $(seq 1 30); do
-  if python3 -c "import socket; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', int('${PROXY_PORT}'))); s.close()" 2>/dev/null; then
+for _ in $(seq 1 60); do
+  if [[ -S "$SOCKET_FILE" ]]; then
     proxy_ready=true
     break
+  fi
+  if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+    fail_with_proxy_logs "Cloud SQL proxy exited before the socket was ready."
   fi
   sleep 1
 done
 
 if [[ "$proxy_ready" != "true" ]]; then
-  echo "Cloud SQL proxy did not become ready."
-  exit 1
+  fail_with_proxy_logs "Cloud SQL proxy did not create ${SOCKET_FILE}."
+fi
+
+if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+  fail_with_proxy_logs "Cloud SQL proxy is not running."
 fi
 
 cd "$ROOT_DIR"
