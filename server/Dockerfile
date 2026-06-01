@@ -2,7 +2,8 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 COPY server/package*.json ./server/
-RUN npm ci --workspace server --include-workspace-root
+# postinstall runs prisma generate, but schema is not copied until the build stage
+RUN npm ci --workspace server --include-workspace-root --ignore-scripts
 
 FROM node:20-alpine AS build
 WORKDIR /app
