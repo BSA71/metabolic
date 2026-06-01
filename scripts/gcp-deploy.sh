@@ -16,6 +16,13 @@ CI="${CI:-false}"
 cd "$ROOT_DIR"
 gcloud config set project "$PROJECT_ID"
 
+echo "==> Apply database migrations"
+if [[ "${SKIP_DB_MIGRATIONS:-false}" != "true" ]]; then
+  "$ROOT_DIR/scripts/run-cloud-migrations.sh"
+else
+  echo "Skipped (SKIP_DB_MIGRATIONS=true)"
+fi
+
 echo "==> Configure Docker for Artifact Registry"
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 

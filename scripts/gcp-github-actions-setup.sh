@@ -72,6 +72,7 @@ DEPLOY_ROLES=(
   roles/artifactregistry.writer
   roles/iam.serviceAccountUser
   roles/secretmanager.secretAccessor
+  roles/cloudsql.client
   roles/firebasehosting.admin
 )
 
