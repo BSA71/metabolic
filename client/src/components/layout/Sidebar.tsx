@@ -20,7 +20,7 @@ export function Sidebar({ user }: { user?: AppUser | null }) {
   return (
     <aside className="hidden w-64 border-r border-app-border bg-app-surface p-5 lg:block">
       <div className="mb-8">
-        <BrandLogo markSize={32} />
+        <BrandLogo markSize={32} to="/" />
       </div>
       <nav className="space-y-1">
         {visibleLinks.map(([to, label, Icon]) => (
