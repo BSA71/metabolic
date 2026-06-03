@@ -22,7 +22,7 @@ export function Topbar({ user }: { user?: AppUser | null }) {
             <ArrowLeft size={20} />
           </button>
         )}
-        <BrandLogo showTagline={isDashboard} markSize={36} />
+        <BrandLogo showTagline={isDashboard} markSize={36} to="/" />
       </div>
 
       <div className="flex items-center gap-3">

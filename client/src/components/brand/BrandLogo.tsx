@@ -1,4 +1,5 @@
 import { clsx } from 'clsx';
+import { Link } from 'react-router-dom';
 
 function BrandMark({ className, size = 40 }: { className?: string; size?: number }) {
   return (
@@ -57,14 +58,17 @@ function BrandMark({ className, size = 40 }: { className?: string; size?: number
 export function BrandLogo({
   className,
   showTagline = false,
-  markSize = 40
+  markSize = 40,
+  to
 }: {
   className?: string;
   showTagline?: boolean;
   markSize?: number;
+  /** When set, the logo navigates to this route (e.g. dashboard). */
+  to?: string;
 }) {
-  return (
-    <div className={clsx('flex items-start gap-3', className)}>
+  const content = (
+    <>
       <BrandMark size={markSize} className="shrink-0 -translate-y-0.5" />
       <div className="min-w-0">
         <p className="leading-none">
@@ -79,8 +83,20 @@ export function BrandLogo({
           </p>
         )}
       </div>
-    </div>
+    </>
   );
+
+  const rootClass = clsx('flex items-start gap-3', className);
+
+  if (to) {
+    return (
+      <Link to={to} className={clsx(rootClass, 'rounded-lg transition-opacity hover:opacity-90')} aria-label="Go to dashboard">
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={rootClass}>{content}</div>;
 }
 
 export function BrandMarkIcon({ size = 32, className }: { size?: number; className?: string }) {
