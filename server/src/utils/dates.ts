@@ -11,3 +11,9 @@ export function parseDateParam(date: string) {
 export function toDateKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
+
+export function addUtcDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
