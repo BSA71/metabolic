@@ -28,6 +28,12 @@ export function GamificationPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [load]);
+
   if (loading) return <p className="text-app-text-muted">Loading your journey…</p>;
 
   return (
