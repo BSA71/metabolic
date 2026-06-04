@@ -82,6 +82,77 @@ enum SmsStatus {
   PROCESSED
   FAILED
 }
+enum LevelStatus {
+  LOCKED
+  PREVIEW
+  ACTIVE
+  COMPLETED
+}
+enum BadgeStatus {
+  LOCKED
+  IN_PROGRESS
+  EARNED
+}
+enum StreakStatus {
+  ACTIVE
+  AT_RISK
+  PRESERVED_BY_GRACE_DAY
+  RESET
+  RECOVERED
+}
+enum StreakType {
+  FOOD_LOGGING_DAILY
+  DAILY_WIN
+  WATER_GOAL_DAILY
+  DAILY_CHECK_IN
+  WEEKLY_SNAPSHOT
+  WEEKLY_MEASUREMENTS
+  WEEKLY_PHOTOS
+  WEEKLY_REFLECTION
+  WEEKLY_FOCUS_GOAL
+}
+enum StreakEventType {
+  COMPLETED
+  MISSED
+  GRACE_DAY_USED
+  RESET
+  RECOVERED
+}
+enum GamificationMealLogStatus {
+  ATE_AS_PLANNED
+  ATE_SOMETHING_DIFFERENT
+  SKIPPED_MEAL
+  EXTRA_ITEM
+}
+enum MealCategory {
+  DIFFERENT_HEALTHY_OPTION
+  RESTAURANT_MEAL
+  LARGER_PORTION
+  SWEET_TREAT
+  SNACK
+  ALCOHOL
+  OTHER
+}
+enum BadgeCategory {
+  GETTING_STARTED
+  CONSISTENCY
+  HONEST_TRACKING
+  PROGRESS
+  HABIT
+}
+enum BadgeTier {
+  BRONZE
+  SILVER
+  GOLD
+}
+enum DailyFoodLogStatus {
+  IN_PROGRESS
+  COMPLETE
+}
+enum ProgressSnapshotStatus {
+  DRAFT
+  COMPLETE
+}
 
 model User {
   id String @id @default(cuid())
@@ -111,6 +182,13 @@ model User {
   mealTemplates MealTemplate[]
   nutritionPlanTemplatesCreated NutritionPlanTemplate[] @relation("NutritionPlanTemplateCreator")
   exerciseTemplatesCreated ExerciseTemplate[] @relation("ExerciseTemplateCreator")
+  levelProgress UserLevelProgress[]
+  badges UserBadge[]
+  streaks UserStreak[]
+  streakEvents StreakEvent[]
+  dailyFoodLogs DailyFoodLog[]
+  progressSnapshots ProgressSnapshot[]
+  weeklyReflections WeeklyReflection[]
 }
 
 model Organization {
@@ -245,6 +323,7 @@ model DailyLog {
   program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   meals Meal[]
+  dailyFoodLog DailyFoodLog?
   @@unique([userId, date])
 }
 
@@ -269,6 +348,7 @@ model Meal {
   dailyLog DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   items MealItem[]
+  gamificationLog GamificationMealLog?
 }
 
 model MealItem {
@@ -535,4 +615,164 @@ model NutritionTemplateMealItem {
   updatedAt DateTime @updatedAt
   meal NutritionTemplateMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
   food Food? @relation(fields: [foodId], references: [id])
+}
+
+model LevelDefinition {
+  id String @id
+  name String
+  description String
+  purpose String
+  order Int @unique
+  requirements Json
+  unlocks Json
+  completionMessage String
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userProgress UserLevelProgress[]
+}
+
+model UserLevelProgress {
+  id String @id @default(cuid())
+  userId String
+  levelId String
+  status LevelStatus @default(LOCKED)
+  startedAt DateTime?
+  completedAt DateTime?
+  progressPercent Int @default(0)
+  currentStep Int @default(0)
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level LevelDefinition @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  @@unique([userId, levelId])
+}
+
+model BadgeDefinition {
+  id String @id
+  name String
+  description String
+  icon String
+  category BadgeCategory
+  requirementType String
+  requirementThreshold Int @default(1)
+  tier BadgeTier?
+  metadata Json?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userBadges UserBadge[]
+}
+
+model UserBadge {
+  id String @id @default(cuid())
+  userId String
+  badgeId String
+  status BadgeStatus @default(LOCKED)
+  progress Int @default(0)
+  earnedAt DateTime?
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge BadgeDefinition @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  @@unique([userId, badgeId])
+}
+
+model UserStreak {
+  id String @id @default(cuid())
+  userId String
+  streakType StreakType
+  currentCount Int @default(0)
+  bestCount Int @default(0)
+  lastCompletedDate DateTime?
+  graceDaysAvailable Int @default(1)
+  graceDaysUsed Int @default(0)
+  status StreakStatus @default(ACTIVE)
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, streakType])
+}
+
+model StreakEvent {
+  id String @id @default(cuid())
+  userId String
+  streakType StreakType
+  eventDate DateTime
+  eventType StreakEventType
+  relatedEntityId String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, streakType, eventDate])
+}
+
+model DailyFoodLog {
+  id String @id @default(cuid())
+  userId String
+  dailyLogId String @unique
+  date DateTime
+  completionStatus DailyFoodLogStatus @default(IN_PROGRESS)
+  dailyWinEarned Boolean @default(false)
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyLog DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  mealLogs GamificationMealLog[]
+  @@unique([userId, date])
+}
+
+model GamificationMealLog {
+  id String @id @default(cuid())
+  dailyFoodLogId String
+  mealId String @unique
+  status GamificationMealLogStatus
+  actualFoodDescription String?
+  category MealCategory?
+  photoUrl String?
+  notes String?
+  loggedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  dailyFoodLog DailyFoodLog @relation(fields: [dailyFoodLogId], references: [id], onDelete: Cascade)
+  meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+}
+
+model ProgressSnapshot {
+  id String @id @default(cuid())
+  userId String
+  programId String?
+  snapshotDate DateTime
+  weight Decimal? @db.Decimal(10, 2)
+  measurements Json?
+  extendedMeasurements Json?
+  frontPhotoUrl String?
+  sidePhotoUrl String?
+  backPhotoUrl String?
+  notes String?
+  completionStatus ProgressSnapshotStatus @default(DRAFT)
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, snapshotDate])
+}
+
+model WeeklyReflection {
+  id String @id @default(cuid())
+  userId String
+  weekStartDate DateTime
+  difficultyRating String?
+  frictionPoints Json?
+  selectedFocusGoal String?
+  notes String?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, weekStartDate])
 }

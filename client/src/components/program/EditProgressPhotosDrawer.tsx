@@ -1,27 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
-import { Upload } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type { ProgressPhotoSet } from '../../types';
 import { api, parseDateKey, todayKey } from '../../services/api';
 import { isFirebaseStorageConfigured } from '../../services/firebase';
 import { uploadProgressPhoto, validateProgressPhotoFile, type ProgressPhotoSlot } from '../../services/progressPhotoStorage';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
+import {
+  emptyPhotoDraft,
+  ProgressPhotoUploadField,
+  type PhotoDraft
+} from './ProgressPhotoUploadField';
 
 const PHOTO_SLOTS: Array<{ slot: ProgressPhotoSlot; label: string }> = [
   { slot: 'front', label: 'Front' },
   { slot: 'side', label: 'Side' },
   { slot: 'back', label: 'Back' }
 ];
-
-type PhotoDraft = {
-  existingUrl: string | null;
-  file: File | null;
-  previewUrl: string | null;
-};
-
-function emptyDraft(url: string | null = null): PhotoDraft {
-  return { existingUrl: url, file: null, previewUrl: url };
-}
 
 function labelClassName() {
   return 'mb-1 block text-sm font-medium text-slate-600';
@@ -67,67 +61,6 @@ export function EditProgressPhotosDrawer({
   );
 }
 
-function PhotoUploadField({
-  label,
-  draft,
-  disabled,
-  onSelect
-}: {
-  label: string;
-  draft: PhotoDraft;
-  disabled: boolean;
-  onSelect: (file: File) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  return (
-    <div className="rounded-2xl border border-slate-200 p-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <p className="font-medium text-slate-800">{label}</p>
-          <p className="text-xs text-slate-500">JPG, PNG, or WEBP up to 10 MB</p>
-        </div>
-        <button
-          type="button"
-          disabled={disabled}
-          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => inputRef.current?.click()}
-        >
-          <Upload size={14} />
-          {draft.previewUrl ? 'Replace' : 'Upload'}
-        </button>
-      </div>
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        disabled={disabled}
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) onSelect(file);
-          event.target.value = '';
-        }}
-      />
-
-      {draft.previewUrl ? (
-        <img src={draft.previewUrl} alt={`${label} progress`} className="h-40 w-full rounded-xl object-cover" />
-      ) : (
-        <button
-          type="button"
-          disabled={disabled}
-          className="flex h-40 w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500 transition hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => inputRef.current?.click()}
-        >
-          <Upload size={20} className="mb-2" />
-          Choose photo
-        </button>
-      )}
-    </div>
-  );
-}
-
 function EditProgressPhotosDrawerContent({
   programId,
   photoSet,
@@ -141,9 +74,9 @@ function EditProgressPhotosDrawerContent({
 }) {
   const [date, setDate] = useState(photoSet?.date ?? todayKey());
   const [photos, setPhotos] = useState<Record<ProgressPhotoSlot, PhotoDraft>>(() => ({
-    front: emptyDraft(photoSet?.frontUrl ?? null),
-    side: emptyDraft(photoSet?.sideUrl ?? null),
-    back: emptyDraft(photoSet?.backUrl ?? null)
+    front: emptyPhotoDraft(photoSet?.frontUrl ?? null),
+    side: emptyPhotoDraft(photoSet?.sideUrl ?? null),
+    back: emptyPhotoDraft(photoSet?.backUrl ?? null)
   }));
   const [objectUrls, setObjectUrls] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -240,7 +173,7 @@ function EditProgressPhotosDrawerContent({
       </label>
 
       {PHOTO_SLOTS.map(({ slot, label }) => (
-        <PhotoUploadField
+        <ProgressPhotoUploadField
           key={slot}
           label={label}
           draft={photos[slot]}

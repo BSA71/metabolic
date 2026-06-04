@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LayoutTemplate } from 'lucide-react';
-import { api, isToday, todayKey } from '../services/api';
+import { api, isFuture, isToday, todayKey } from '../services/api';
+import { AddExtraFoodButton } from '../components/gamification/AddExtraFoodButton';
 import type { Meal, NutritionPlanTemplateSummary } from '../types';
 import { MealPlanner } from '../components/nutrition/MealPlanner';
 import { WeekDateStrip } from '../components/nutrition/WeekDateStrip';
@@ -133,6 +134,10 @@ export function NutritionPage() {
 
       {loadError && (
         <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{loadError}</div>
+      )}
+
+      {!isFuture(selectedDate) && (
+        <AddExtraFoodButton date={selectedDate} onAdded={() => load(selectedDate)} />
       )}
 
       <MealPlanner

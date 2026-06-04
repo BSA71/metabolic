@@ -13,6 +13,7 @@ import { aiRoutes } from './routes/aiRoutes.js';
 import { smsRoutes } from './routes/smsRoutes.js';
 import { adminRoutes } from './routes/adminRoutes.js';
 import { onboardingRoutes } from './routes/onboardingRoutes.js';
+import { gamificationRoutes } from './routes/gamificationRoutes.js';
 
 async function main() {
   const app = Fastify({ logger: true });
@@ -36,6 +37,7 @@ async function main() {
   await app.register(smsRoutes);
   await app.register(adminRoutes);
   await app.register(onboardingRoutes);
+  await app.register(gamificationRoutes);
 
   app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
     app.log.error(error);

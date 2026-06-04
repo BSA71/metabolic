@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Target, Apple, Dumbbell, LineChart, Settings } from 'lucide-react';
+import { Target, Apple, Dumbbell, LineChart, Settings, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { getIdToken } from '../services/auth';
@@ -9,7 +9,6 @@ import { TodayNutrition } from '../components/dashboard/TodayNutrition';
 import { TodayExercise } from '../components/dashboard/TodayExercise';
 import { MacroProgress } from '../components/dashboard/MacroProgress';
 import { WeightTrendChart } from '../components/dashboard/WeightTrendChart';
-
 function RemainingMacrosDisplay({
   caloriesRemaining,
   proteinRemaining
@@ -157,10 +156,11 @@ export function DashboardPage({ user }: { user?: AppUser | null }) {
 
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-app-text-muted mb-3">Navigation</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
           <QuickLink to="/program" icon={Target} label="Program" />
           <QuickLink to="/nutrition" icon={Apple} label="Nutrition" />
           <QuickLink to="/exercise" icon={Dumbbell} label="Exercise" />
+          <QuickLink to="/level-up" icon={TrendingUp} label="Level Up" />
           <QuickLink to="/progress" icon={LineChart} label="Progress" />
           <QuickLink to="/admin" icon={Settings} label="Admin" />
         </div>

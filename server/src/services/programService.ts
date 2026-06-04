@@ -1,5 +1,6 @@
 import { ProgramStatus, Role } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { runProgressionEvaluation } from '../gamification/progressionEngine.js';
 import { parseDateParam } from '../utils/dates.js';
 import { metricUpdatesForLegacyGoals, missingProgramMetrics } from '../utils/programMetrics.js';
 
@@ -163,10 +164,14 @@ export async function saveProgramMetricSnapshot(
       }))
     });
 
-    return tx.programMetricSnapshot.findUniqueOrThrow({
+    const result = await tx.programMetricSnapshot.findUniqueOrThrow({
       where: { id: snapshot.id },
       include: { values: true }
     });
+    return result;
+  }).then(async (result) => {
+    void runProgressionEvaluation(program.userId);
+    return result;
   });
 }
 
@@ -274,6 +279,9 @@ export async function upsertSnapshotMeasurement(
       where: { id: snapshot.id },
       include: { values: true }
     });
+  }).then(async (result) => {
+    void runProgressionEvaluation(program.userId);
+    return result;
   });
 }
 
@@ -319,18 +327,22 @@ export async function upsertProgressPhotoSet(
     backUrl: input.backUrl?.trim() || null
   };
 
+  let result;
   if (input.id) {
     const updated = await prisma.programProgressPhotoSet.update({
       where: { id: input.id },
       data
     });
-    return serializeProgressPhotoSet(updated);
+    result = serializeProgressPhotoSet(updated);
+  } else {
+    const created = await prisma.programProgressPhotoSet.upsert({
+      where: { programId_date: { programId, date: day } },
+      create: { programId, date: day, ...data },
+      update: { ...data, updatedAt: new Date() }
+    });
+    result = serializeProgressPhotoSet(created);
   }
 
-  const created = await prisma.programProgressPhotoSet.upsert({
-    where: { programId_date: { programId, date: day } },
-    create: { programId, date: day, ...data },
-    update: { ...data, updatedAt: new Date() }
-  });
-  return serializeProgressPhotoSet(created);
+  void runProgressionEvaluation(program.userId);
+  return result;
 }

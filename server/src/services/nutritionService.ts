@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma.js';
 import { parseDateParam } from '../utils/dates.js';
 import { n } from '../utils/numbers.js';
 import { recalculateDailyLogTotals, recalculateMealTotals } from './totalsService.js';
+import { notifyMealActivity } from '../gamification/mealActivity.js';
 
 function matchesPlannedActual(
   actual: { type: MealItemType; linkedPlannedItemId: string | null; nameSnapshot: string; quantity: unknown; foodId: string | null },
@@ -56,17 +57,21 @@ export async function markMealEatenAsPlanned(userId: string, mealId: string) {
     await recalculateMealTotals(mealId, tx);
     await tx.meal.update({ where: { id: mealId }, data: { status: MealStatus.EATEN_AS_PLANNED } });
     return recalculateDailyLogTotals(meal.dailyLogId, tx);
+  }).then(async (result) => {
+    void notifyMealActivity(userId, mealId);
+    return result;
   });
 }
 
 export async function addMealItem(userId: string, mealId: string, data: Record<string, unknown>) {
+  const itemType = (data.type as MealItemType | undefined) ?? MealItemType.ACTUAL;
   return prisma.$transaction(async (tx) => {
     const meal = await tx.meal.findFirstOrThrow({ where: { id: mealId, userId } });
     const item = await tx.mealItem.create({
       data: {
         mealId,
         foodId: (data.foodId as string | undefined) ?? null,
-        type: (data.type as MealItemType | undefined) ?? MealItemType.ACTUAL,
+        type: itemType,
         nameSnapshot: String(data.nameSnapshot ?? data.name ?? 'Food'),
         quantity: Number(data.quantity ?? 1),
         unit: String(data.unit ?? 'serving'),
@@ -78,6 +83,9 @@ export async function addMealItem(userId: string, mealId: string, data: Record<s
     });
     await recalculateMealTotals(mealId, tx);
     await recalculateDailyLogTotals(meal.dailyLogId, tx);
+    return item;
+  }).then(async (item) => {
+    if (itemType === MealItemType.ACTUAL) void notifyMealActivity(userId, mealId);
     return item;
   });
 }
@@ -180,6 +188,9 @@ export async function setPlannedItemLogged(userId: string, plannedItemId: string
     }
 
     await tx.meal.update({ where: { id: planned.mealId }, data: { status } });
+    return { meal, logged };
+  }).then(async ({ meal, logged }) => {
+    if (logged) void notifyMealActivity(userId, meal.id);
     return meal;
   });
 }

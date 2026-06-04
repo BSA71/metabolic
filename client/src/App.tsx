@@ -20,6 +20,10 @@ import { LoginPage } from './pages/LoginPage';
 import { FirstTimeSetupPage } from './pages/FirstTimeSetupPage';
 import { CampaignPolicyPage } from './pages/CampaignPolicyPage';
 import { CampaignTermsPage } from './pages/CampaignTermsPage';
+import { GamificationPage } from './pages/GamificationPage';
+import { JourneyPage } from './pages/JourneyPage';
+import { BadgesPage } from './pages/BadgesPage';
+import { BaselineSnapshotPage } from './pages/BaselineSnapshotPage';
 import { isAdminRole } from './utils/roles';
 
 function LoadingScreen() {
@@ -161,6 +165,10 @@ export default function App() {
           <Route path="nutrition" element={<NutritionPage />} />
           <Route path="exercise" element={<ExercisePage />} />
           <Route path="progress" element={<ProgressPage />} />
+          <Route path="level-up" element={<GamificationPage />} />
+          <Route path="level-up/journey" element={<JourneyPage />} />
+          <Route path="level-up/badges" element={<BadgesPage />} />
+          <Route path="level-up/baseline" element={<BaselineSnapshotPage />} />
           <Route path="assistant" element={<AssistantPage />} />
           <Route path="admin" element={<AdminRoute appUser={appUser} />} />
           <Route path="admin/nutrition-templates" element={<AdminRoute appUser={appUser}><AdminNutritionTemplatesPage /></AdminRoute>} />
