@@ -5,6 +5,17 @@ import { n } from '../utils/numbers.js';
 import { recalculateDailyLogTotals, recalculateMealTotals } from './totalsService.js';
 import { notifyMealActivity } from '../gamification/mealActivity.js';
 
+function hasNutritionActivity(meal: { status: string; plannedCalories: unknown; actualCalories: unknown; items: unknown[] }) {
+  return meal.items.length > 0 || n(meal.plannedCalories) > 0 || n(meal.actualCalories) > 0 || meal.status !== MealStatus.PLANNED;
+}
+
+function mealsForNutritionDisplay<T extends { status: string; plannedCalories: unknown; actualCalories: unknown; items: unknown[] }>(
+  meals: T[]
+) {
+  const activeMeals = meals.filter(hasNutritionActivity);
+  return activeMeals.length ? activeMeals : meals;
+}
+
 function matchesPlannedActual(
   actual: { type: MealItemType; linkedPlannedItemId: string | null; nameSnapshot: string; quantity: unknown; foodId: string | null },
   planned: { id: string; nameSnapshot: string; quantity: unknown; foodId: string | null }
@@ -22,7 +33,12 @@ export async function getMealsForDate(userId: string, date: string) {
   const day = parseDateParam(date);
   const log = await prisma.dailyLog.findUnique({ where: { userId_date: { userId, date: day } } });
   if (!log) return [];
-  return prisma.meal.findMany({ where: { dailyLogId: log.id }, include: { items: true }, orderBy: { mealNumber: 'asc' } });
+  const meals = await prisma.meal.findMany({
+    where: { dailyLogId: log.id },
+    include: { items: true },
+    orderBy: { mealNumber: 'asc' }
+  });
+  return mealsForNutritionDisplay(meals);
 }
 
 export async function createMeal(userId: string, date: string, data: { name: string; mealNumber: number }) {
@@ -58,7 +74,7 @@ export async function markMealEatenAsPlanned(userId: string, mealId: string) {
     await tx.meal.update({ where: { id: mealId }, data: { status: MealStatus.EATEN_AS_PLANNED } });
     return recalculateDailyLogTotals(meal.dailyLogId, tx);
   }).then(async (result) => {
-    void notifyMealActivity(userId, mealId);
+    await notifyMealActivity(userId, mealId);
     return result;
   });
 }
@@ -85,7 +101,7 @@ export async function addMealItem(userId: string, mealId: string, data: Record<s
     await recalculateDailyLogTotals(meal.dailyLogId, tx);
     return item;
   }).then(async (item) => {
-    if (itemType === MealItemType.ACTUAL) void notifyMealActivity(userId, mealId);
+    if (itemType === MealItemType.ACTUAL) await notifyMealActivity(userId, mealId);
     return item;
   });
 }
@@ -189,8 +205,8 @@ export async function setPlannedItemLogged(userId: string, plannedItemId: string
 
     await tx.meal.update({ where: { id: planned.mealId }, data: { status } });
     return { meal, logged };
-  }).then(async ({ meal, logged }) => {
-    if (logged) void notifyMealActivity(userId, meal.id);
+  }).then(async ({ meal }) => {
+    await notifyMealActivity(userId, meal.id);
     return meal;
   });
 }

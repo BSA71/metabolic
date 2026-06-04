@@ -1,14 +1,16 @@
 import {
   BadgeStatus,
+  DailyFoodLogStatus,
   GamificationMealLogStatus,
   LevelStatus,
+  MealStatus,
   ProgramStatus,
   StreakEventType,
   StreakStatus,
   StreakType,
   type Prisma
 } from '@prisma/client';
-import { countMealsLogged, mealIsLogged } from './mealActivity.js';
+import { allPlannedMealsLogged, countMealsLogged, getTodayMealsForUser, mealIsLogged } from './mealActivity.js';
 import { prisma } from '../db/prisma.js';
 import { startOfUtcDay, addUtcDays } from '../utils/dates.js';
 import {
@@ -40,6 +42,42 @@ async function getCompletedFoodLogDays(userId: string) {
   return prisma.dailyFoodLog.count({
     where: { userId, completionStatus: 'COMPLETE' }
   });
+}
+
+async function reconcileCompletedFoodLogDays(userId: string) {
+  const logs = await prisma.dailyLog.findMany({
+    where: { userId },
+    include: {
+      dailyFoodLog: true,
+      meals: { include: { items: true, gamificationLog: { select: { id: true } } } }
+    }
+  });
+
+  for (const log of logs) {
+    if (log.dailyFoodLog?.completionStatus === DailyFoodLogStatus.COMPLETE) continue;
+    if (!allPlannedMealsLogged(log.meals)) continue;
+
+    await prisma.dailyFoodLog.upsert({
+      where: { dailyLogId: log.id },
+      create: {
+        userId,
+        dailyLogId: log.id,
+        date: log.date,
+        completionStatus: DailyFoodLogStatus.COMPLETE,
+        dailyWinEarned: log.meals.every(
+          (meal) =>
+            meal.status === MealStatus.EATEN_AS_PLANNED ||
+            meal.status === MealStatus.MODIFIED ||
+            meal.status === MealStatus.SKIPPED
+        ),
+        completedAt: new Date()
+      },
+      update: {
+        completionStatus: DailyFoodLogStatus.COMPLETE,
+        completedAt: new Date()
+      }
+    });
+  }
 }
 
 async function getFoodLogDaysWithDifferentMeal(userId: string) {
@@ -156,17 +194,11 @@ async function evaluateRequirement(
       return Boolean(log?.meals.some((m) => m.items.some((i) => i.type === 'PLANNED')));
     }
     case 'log_all_planned_meals': {
-      const today = startOfUtcDay();
-      const log = await prisma.dailyLog.findFirst({
-        where: { userId, date: today },
-        include: {
-          meals: { include: { items: true, gamificationLog: { select: { id: true } } } }
-        }
-      });
-      if (!log?.meals.length) return false;
-      return log.meals.every((meal) => mealIsLogged(meal, Boolean(meal.gamificationLog)));
+      const meals = await getTodayMealsForUser(userId);
+      return allPlannedMealsLogged(meals);
     }
     case 'complete_daily_food_log':
+      await reconcileCompletedFoodLogDays(userId);
       return (await getCompletedFoodLogDays(userId)) >= 1;
     case 'enter_starting_weight': {
       const pid = programId ?? (await getActiveProgramId(userId));
@@ -583,12 +615,14 @@ export async function recordFoodLogDay(userId: string, dailyLogId: string, date:
     where: { dailyLogId },
     create: { userId, dailyLogId, date },
     update: {},
-    include: { dailyLog: { include: { meals: true } }, mealLogs: true }
+    include: { mealLogs: true }
   });
 
-  const mealCount = foodLog.dailyLog.meals.length;
-  const loggedCount = foodLog.mealLogs.length;
-  const allMealsLogged = mealCount > 0 && loggedCount >= mealCount;
+  const meals = await prisma.meal.findMany({
+    where: { dailyLogId },
+    include: { items: true, gamificationLog: { select: { id: true } } }
+  });
+  const allMealsLogged = allPlannedMealsLogged(meals);
 
   const dailyWin =
     allMealsLogged &&

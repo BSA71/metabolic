@@ -6,11 +6,38 @@ import {
   type MealItem
 } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
-import { toDateKey } from '../utils/dates.js';
+import { startOfUtcDay, toDateKey } from '../utils/dates.js';
 import { ensureDailyFoodLog } from '../services/gamificationService.js';
 import { recordFoodLogDay } from './progressionEngine.js';
 
-type MealWithItems = Meal & { items: MealItem[] };
+type MealWithItems = Meal & {
+  items: MealItem[];
+  gamificationLog?: { id: string } | null;
+};
+
+export function mealsWithPlannedItems(meals: MealWithItems[]) {
+  return meals.filter((meal) => meal.items.some((item) => item.type === MealItemType.PLANNED));
+}
+
+export function allPlannedMealsLogged(meals: MealWithItems[]) {
+  const withPlan = mealsWithPlannedItems(meals);
+  if (!withPlan.length) return false;
+  return withPlan.every((meal) => mealIsLogged(meal, Boolean(meal.gamificationLog)));
+}
+
+export async function getTodayMealsForUser(userId: string) {
+  const today = startOfUtcDay();
+  const log = await prisma.dailyLog.findUnique({
+    where: { userId_date: { userId, date: today } },
+    include: {
+      meals: {
+        include: { items: true, gamificationLog: { select: { id: true } } },
+        orderBy: { mealNumber: 'asc' }
+      }
+    }
+  });
+  return log?.meals ?? [];
+}
 
 export function mealIsLogged(meal: MealWithItems, hasGamificationLog: boolean): boolean {
   if (hasGamificationLog) return true;

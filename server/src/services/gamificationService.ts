@@ -117,7 +117,8 @@ export async function getGamificationDashboard(userId: string) {
 
   const activeProgress = await prisma.userLevelProgress.findFirst({
     where: { userId, status: LevelStatus.ACTIVE },
-    include: { level: true }
+    include: { level: true },
+    orderBy: { level: { order: 'asc' } }
   });
 
   const levelDef = activeProgress

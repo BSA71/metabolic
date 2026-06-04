@@ -88,7 +88,6 @@ export function TopbarGamification() {
         ) : (
           <Award className="size-[45px] text-app-text-muted sm:size-20" />
         )}
-        )}
       </Link>
     </div>
   );

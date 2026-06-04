@@ -25,6 +25,8 @@ async function copyMealsFromLog(sourceLogId: string, targetLogId: string, userId
 
   for (const meal of sourceMeals) {
     const plannedItems = meal.items.filter((item) => item.type === MealItemType.PLANNED);
+    if (!plannedItems.length && meal.status === MealStatus.PLANNED) continue;
+
     await prisma.meal.create({
       data: {
         dailyLogId: targetLogId,
