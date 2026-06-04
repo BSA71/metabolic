@@ -4,6 +4,7 @@ import type { Meal, MealItem } from '../../types';
 import { api, isFuture } from '../../services/api';
 import { Badge } from '../ui/Badge';
 import { Card } from '../ui/Card';
+import { MealLogActions } from '../gamification/MealLogActions';
 
 function MealActionButton({
   label,
@@ -215,6 +216,10 @@ export function MealCard({
           </p>
         </div>
       </div>
+
+      {!future && plannedItems.length > 0 && (
+        <MealLogActions mealId={meal.id} disabled={future} onLogged={() => void onChange()} />
+      )}
     </Card>
   );
 }

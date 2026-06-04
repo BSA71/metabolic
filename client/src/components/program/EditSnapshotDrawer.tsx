@@ -4,12 +4,20 @@ import { api, parseDateKey } from '../../services/api';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
 
-const TRACKED_METRICS = [
+const BODY_COMP_METRICS = [
   { metricType: 'WEIGHT', label: 'Weight', unit: 'lbs' },
   { metricType: 'BODY_FAT', label: 'Body Fat %', unit: '%' },
   { metricType: 'LEAN_TISSUE_MASS', label: 'Lean Tissue', unit: 'lbs' },
   { metricType: 'FAT_MASS', label: 'Body Fat', unit: 'lbs' }
 ] as const;
+
+const MEASUREMENT_METRICS = [
+  { metricType: 'WAIST', label: 'Waist', unit: 'in' },
+  { metricType: 'HIPS', label: 'Hips', unit: 'in' },
+  { metricType: 'CHEST', label: 'Chest', unit: 'in' }
+] as const;
+
+const TRACKED_METRICS = [...BODY_COMP_METRICS, ...MEASUREMENT_METRICS] as const;
 
 type SnapshotDraft = Record<(typeof TRACKED_METRICS)[number]['metricType'], string>;
 
@@ -27,7 +35,10 @@ function toDraft(snapshot: ProgramMetricSnapshot): SnapshotDraft {
     WEIGHT: metricValue(snapshot, 'WEIGHT'),
     BODY_FAT: metricValue(snapshot, 'BODY_FAT'),
     LEAN_TISSUE_MASS: metricValue(snapshot, 'LEAN_TISSUE_MASS'),
-    FAT_MASS: metricValue(snapshot, 'FAT_MASS')
+    FAT_MASS: metricValue(snapshot, 'FAT_MASS'),
+    WAIST: metricValue(snapshot, 'WAIST'),
+    HIPS: metricValue(snapshot, 'HIPS'),
+    CHEST: metricValue(snapshot, 'CHEST')
   };
 }
 
@@ -104,16 +115,18 @@ function EditSnapshotDrawerContent({
     setSaving(true);
     setError('');
     try {
-      const trackedPayload = TRACKED_METRICS.map(({ metricType, unit }) => {
-        const parsed = Number(draft[metricType]);
+      const trackedPayload = TRACKED_METRICS.flatMap(({ metricType, unit }) => {
+        const raw = draft[metricType].trim();
+        if (!raw) return [];
+        const parsed = Number(raw);
         if (!Number.isFinite(parsed)) {
           throw new Error(`Enter a valid number for ${metricType.replaceAll('_', ' ').toLowerCase()}.`);
         }
-        return {
+        return [{
           metricType,
           currentValue: parsed,
           unit: unitFor(snapshot, metricType, unit)
-        };
+        }];
       });
 
       const preserved = snapshot.values
@@ -143,7 +156,7 @@ function EditSnapshotDrawerContent({
         Session {session ?? '—'} · {formatSessionDate(snapshot.date)}
       </p>
 
-      {TRACKED_METRICS.map(({ metricType, label, unit }) => (
+      {BODY_COMP_METRICS.map(({ metricType, label, unit }) => (
         <label key={metricType} className="block">
           <span className={labelClassName()}>{label}</span>
           <div className="flex items-center gap-2">
@@ -158,6 +171,25 @@ function EditSnapshotDrawerContent({
           </div>
         </label>
       ))}
+
+      <div className="border-t border-slate-200 pt-4">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Weekly measurements</h3>
+        {MEASUREMENT_METRICS.map(({ metricType, label, unit }) => (
+          <label key={metricType} className="mb-4 block last:mb-0">
+            <span className={labelClassName()}>{label}</span>
+            <div className="flex items-center gap-2">
+              <input
+                className={inputClassName()}
+                type="number"
+                step="0.01"
+                value={draft[metricType]}
+                onChange={(event) => updateDraft(metricType, event.target.value)}
+              />
+              <span className="text-sm text-slate-500">{unitFor(snapshot, metricType, unit)}</span>
+            </div>
+          </label>
+        ))}
+      </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

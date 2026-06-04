@@ -4,6 +4,7 @@ import { logout } from '../../services/auth';
 import type { AppUser } from '../../types';
 import { BrandLogo } from '../brand/BrandLogo';
 import { ThemeToggle } from './ThemeToggle';
+import { TopbarGamification } from './TopbarGamification';
 
 export function Topbar({ user }: { user?: AppUser | null }) {
   const location = useLocation();
@@ -11,8 +12,8 @@ export function Topbar({ user }: { user?: AppUser | null }) {
   const isDashboard = location.pathname === '/';
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-app-border bg-app-surface/90 px-4 py-3 backdrop-blur transition-colors duration-200">
-      <div className="flex items-center gap-4">
+    <header className="sticky top-0 z-20 grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-app-border bg-app-surface/90 px-4 py-3 backdrop-blur transition-colors duration-200">
+      <div className="flex items-center gap-4 min-w-0 justify-self-start">
         {!isDashboard && (
           <button
             onClick={() => navigate(-1)}
@@ -22,10 +23,14 @@ export function Topbar({ user }: { user?: AppUser | null }) {
             <ArrowLeft size={20} />
           </button>
         )}
-        <BrandLogo showTagline={isDashboard} markSize={36} />
+        <BrandLogo showTagline={isDashboard} markSize={36} to="/" />
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="justify-self-center min-w-0 w-full max-w-xl md:max-w-2xl px-1 overflow-hidden">
+        <TopbarGamification />
+      </div>
+
+      <div className="flex items-center gap-3 justify-self-end">
         {user && (
           <span className="text-sm font-medium hidden md:block text-app-text-muted">
             Hi, {user.firstName}

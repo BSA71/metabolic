@@ -27,6 +27,7 @@ APIS=(
   secretmanager.googleapis.com
   firebase.googleapis.com
   firebasehosting.googleapis.com
+  firebasestorage.googleapis.com
 )
 for api in "${APIS[@]}"; do
   if gcloud services enable "$api" --quiet 2>/dev/null; then
@@ -72,7 +73,11 @@ DEPLOY_ROLES=(
   roles/artifactregistry.writer
   roles/iam.serviceAccountUser
   roles/secretmanager.secretAccessor
+  roles/cloudsql.client
+  roles/firebase.admin
   roles/firebasehosting.admin
+  roles/firebasestorage.admin
+  roles/serviceusage.serviceUsageConsumer
 )
 
 echo "==> Grant deploy roles to $SA_EMAIL"

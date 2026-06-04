@@ -1,6 +1,8 @@
 import { MealItemType, MealStatus, Prisma, ProgramStatus, type Program, type ProgramMetric } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { parseDateParam, startOfUtcDay, toDateKey } from '../utils/dates.js';
+import { applyDefaultTemplateToNewLogOutsideTx } from './nutritionTemplateApply.js';
+import { applyDefaultTemplateToNewDayOutsideTx } from './exerciseTemplateApply.js';
 
 const DEFAULT_MEALS: [number, string, string][] = [
   [1, 'Breakfast', '07:30'],
@@ -23,6 +25,8 @@ async function copyMealsFromLog(sourceLogId: string, targetLogId: string, userId
 
   for (const meal of sourceMeals) {
     const plannedItems = meal.items.filter((item) => item.type === MealItemType.PLANNED);
+    if (!plannedItems.length && meal.status === MealStatus.PLANNED) continue;
+
     await prisma.meal.create({
       data: {
         dailyLogId: targetLogId,
@@ -73,15 +77,10 @@ async function copyExercisesForDate(programId: string, userId: string, targetDat
 
   const templateExercises = await prisma.scheduledExercise.findMany({
     where: { userId, programId, scheduledDate: latestExerciseDay.scheduledDate },
-    orderBy: { createdAt: 'asc' }
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
   });
 
   if (!templateExercises.length) return;
-
-  const existing = await prisma.scheduledExercise.count({
-    where: { userId, programId, scheduledDate: targetDate }
-  });
-  if (existing) return;
 
   await prisma.scheduledExercise.createMany({
     data: templateExercises.map((exercise) => ({
@@ -94,9 +93,28 @@ async function copyExercisesForDate(programId: string, userId: string, targetDat
       durationMinutes: exercise.durationMinutes,
       distance: exercise.distance,
       weight: exercise.weight,
-      status: 'PLANNED'
+      status: 'PLANNED',
+      sortOrder: exercise.sortOrder
     }))
   });
+}
+
+async function seedExercisesForDate(
+  program: { id: string; defaultExerciseTemplateId: string | null },
+  userId: string,
+  targetDate: Date
+) {
+  const existing = await prisma.scheduledExercise.count({
+    where: { userId, programId: program.id, scheduledDate: targetDate }
+  });
+  if (existing) return;
+
+  if (program.defaultExerciseTemplateId) {
+    await applyDefaultTemplateToNewDayOutsideTx(program, userId, targetDate);
+    return;
+  }
+
+  await copyExercisesForDate(program.id, userId, targetDate);
 }
 
 export async function ensureDailyLog(userId: string, program: Program & { metrics: ProgramMetric[] }, targetDate: Date) {
@@ -114,6 +132,8 @@ export async function ensureDailyLog(userId: string, program: Program & { metric
       });
       if (priorLog?.meals.length) {
         await copyMealsFromLog(priorLog.id, existing.id, userId);
+      } else if (program.defaultNutritionTemplateId) {
+        await applyDefaultTemplateToNewLogOutsideTx(program, existing.id, userId);
       } else {
         await createDefaultMeals(existing.id, userId);
       }
@@ -168,11 +188,13 @@ export async function ensureDailyLog(userId: string, program: Program & { metric
 
   if (fallbackLog?.meals.length) {
     await copyMealsFromLog(fallbackLog.id, dailyLog.id, userId);
+  } else if (program.defaultNutritionTemplateId) {
+    await applyDefaultTemplateToNewLogOutsideTx(program, dailyLog.id, userId);
   } else {
     await createDefaultMeals(dailyLog.id, userId);
   }
 
-  await copyExercisesForDate(program.id, userId, day);
+  await seedExercisesForDate(program, userId, day);
 
   return dailyLog;
 }

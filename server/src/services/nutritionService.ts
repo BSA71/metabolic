@@ -3,6 +3,18 @@ import { prisma } from '../db/prisma.js';
 import { parseDateParam } from '../utils/dates.js';
 import { n } from '../utils/numbers.js';
 import { recalculateDailyLogTotals, recalculateMealTotals } from './totalsService.js';
+import { notifyMealActivity } from '../gamification/mealActivity.js';
+
+function hasNutritionActivity(meal: { status: string; plannedCalories: unknown; actualCalories: unknown; items: unknown[] }) {
+  return meal.items.length > 0 || n(meal.plannedCalories) > 0 || n(meal.actualCalories) > 0 || meal.status !== MealStatus.PLANNED;
+}
+
+function mealsForNutritionDisplay<T extends { status: string; plannedCalories: unknown; actualCalories: unknown; items: unknown[] }>(
+  meals: T[]
+) {
+  const activeMeals = meals.filter(hasNutritionActivity);
+  return activeMeals.length ? activeMeals : meals;
+}
 
 function matchesPlannedActual(
   actual: { type: MealItemType; linkedPlannedItemId: string | null; nameSnapshot: string; quantity: unknown; foodId: string | null },
@@ -21,7 +33,12 @@ export async function getMealsForDate(userId: string, date: string) {
   const day = parseDateParam(date);
   const log = await prisma.dailyLog.findUnique({ where: { userId_date: { userId, date: day } } });
   if (!log) return [];
-  return prisma.meal.findMany({ where: { dailyLogId: log.id }, include: { items: true }, orderBy: { mealNumber: 'asc' } });
+  const meals = await prisma.meal.findMany({
+    where: { dailyLogId: log.id },
+    include: { items: true },
+    orderBy: { mealNumber: 'asc' }
+  });
+  return mealsForNutritionDisplay(meals);
 }
 
 export async function createMeal(userId: string, date: string, data: { name: string; mealNumber: number }) {
@@ -56,17 +73,21 @@ export async function markMealEatenAsPlanned(userId: string, mealId: string) {
     await recalculateMealTotals(mealId, tx);
     await tx.meal.update({ where: { id: mealId }, data: { status: MealStatus.EATEN_AS_PLANNED } });
     return recalculateDailyLogTotals(meal.dailyLogId, tx);
+  }).then(async (result) => {
+    await notifyMealActivity(userId, mealId);
+    return result;
   });
 }
 
 export async function addMealItem(userId: string, mealId: string, data: Record<string, unknown>) {
+  const itemType = (data.type as MealItemType | undefined) ?? MealItemType.ACTUAL;
   return prisma.$transaction(async (tx) => {
     const meal = await tx.meal.findFirstOrThrow({ where: { id: mealId, userId } });
     const item = await tx.mealItem.create({
       data: {
         mealId,
         foodId: (data.foodId as string | undefined) ?? null,
-        type: (data.type as MealItemType | undefined) ?? MealItemType.ACTUAL,
+        type: itemType,
         nameSnapshot: String(data.nameSnapshot ?? data.name ?? 'Food'),
         quantity: Number(data.quantity ?? 1),
         unit: String(data.unit ?? 'serving'),
@@ -78,6 +99,9 @@ export async function addMealItem(userId: string, mealId: string, data: Record<s
     });
     await recalculateMealTotals(mealId, tx);
     await recalculateDailyLogTotals(meal.dailyLogId, tx);
+    return item;
+  }).then(async (item) => {
+    if (itemType === MealItemType.ACTUAL) await notifyMealActivity(userId, mealId);
     return item;
   });
 }
@@ -180,6 +204,9 @@ export async function setPlannedItemLogged(userId: string, plannedItemId: string
     }
 
     await tx.meal.update({ where: { id: planned.mealId }, data: { status } });
+    return { meal, logged };
+  }).then(async ({ meal }) => {
+    await notifyMealActivity(userId, meal.id);
     return meal;
   });
 }

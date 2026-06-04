@@ -60,5 +60,77 @@ export type Exercise = ScheduledExercise;
 export type ProgramMetric = { id: string; metricType: string; startValue: number; currentValue: number; goalValue: number; unit: string };
 export type ProgramMetricSnapshotValue = { metricType: string; currentValue: number; unit: string };
 export type ProgramMetricSnapshot = { id: string; date: string; values: ProgramMetricSnapshotValue[] };
+export type ProgressPhotoSet = {
+  id: string;
+  date: string;
+  frontUrl: string | null;
+  sideUrl: string | null;
+  backUrl: string | null;
+};
 export type Program = { id: string; name: string; status: string; startDate: string; targetEndDate?: string; metrics: ProgramMetric[] };
+export type NutritionTemplateMealItem = {
+  id: string;
+  foodId?: string | null;
+  nameSnapshot: string;
+  quantity: number;
+  unit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+};
+export type NutritionTemplateMeal = {
+  id: string;
+  mealNumber: number;
+  name: string;
+  plannedTime?: string | null;
+  items: NutritionTemplateMealItem[];
+};
+export type NutritionPlanTemplateSummary = {
+  id: string;
+  name: string;
+  description?: string | null;
+  visibility: FoodVisibility;
+  calorieTarget: number;
+  proteinTarget: number;
+  carbTarget: number;
+  fatTarget: number;
+  mealCount: number;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type NutritionPlanTemplate = NutritionPlanTemplateSummary & {
+  createdById?: string | null;
+  meals: NutritionTemplateMeal[];
+};
+export type ExerciseTemplateItem = {
+  id: string;
+  exerciseId: string;
+  sortOrder: number;
+  sets?: number | null;
+  reps?: number | null;
+  durationMinutes?: number | null;
+  distance?: number | null;
+  weight?: number | null;
+  exercise: {
+    name: string;
+    category?: string | null;
+    bodyPart?: string | null;
+    description?: string | null;
+  };
+};
+export type ExercisePlanTemplateSummary = {
+  id: string;
+  name: string;
+  description?: string | null;
+  visibility: FoodVisibility;
+  exerciseCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type ExercisePlanTemplate = ExercisePlanTemplateSummary & {
+  createdById?: string | null;
+  items: ExerciseTemplateItem[];
+};
 export type Dashboard = { program: Program | null; dailyLog: any; meals: Meal[]; exercises: Exercise[]; summary: { currentWeight: number; caloriesRemaining: number; proteinRemaining: number; nextMeal: string; exercisesLeft: number; goalProgress: number } | null; weightTrend: { date: string; weight: number }[] };

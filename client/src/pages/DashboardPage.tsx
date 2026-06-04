@@ -1,15 +1,38 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Target, Apple, Dumbbell, LineChart, Settings } from 'lucide-react';
+import { Target, Apple, Dumbbell, LineChart, Settings, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { getIdToken } from '../services/auth';
 import { DashboardWelcome } from '../components/dashboard/DashboardWelcome';
 import type { AppUser, Dashboard } from '../types';
-import { MetricTile } from '../components/dashboard/MetricTile';
 import { TodayNutrition } from '../components/dashboard/TodayNutrition';
 import { TodayExercise } from '../components/dashboard/TodayExercise';
 import { MacroProgress } from '../components/dashboard/MacroProgress';
 import { WeightTrendChart } from '../components/dashboard/WeightTrendChart';
+function RemainingMacrosDisplay({
+  caloriesRemaining,
+  proteinRemaining
+}: {
+  caloriesRemaining: number;
+  proteinRemaining: number;
+}) {
+  return (
+    <div className="flex gap-6 sm:gap-8 text-left sm:text-center">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-app-text-muted">Calories left</p>
+        <p className="text-xl font-semibold tabular-nums text-brand-navy dark:text-brand-off-white">
+          {caloriesRemaining}
+        </p>
+      </div>
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-app-text-muted">Protein left</p>
+        <p className="text-xl font-semibold tabular-nums text-brand-navy dark:text-brand-off-white">
+          {proteinRemaining}g
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function DateTimeDisplay() {
   const [now, setNow] = useState(() => new Date());
@@ -107,9 +130,14 @@ export function DashboardPage({ user }: { user?: AppUser | null }) {
       <div className="rounded-2xl border border-brand-green/30 bg-brand-green/10 p-6 text-brand-navy dark:text-brand-off-white">
         <h1 className="text-xl font-bold">No active program yet</h1>
         <p className="mt-2 text-sm text-app-text-muted">
-          Your account exists, but there is no active program attached to it yet. Sign in as{' '}
-          <code>user@metabolic.local</code> to use the seeded demo data, or create a program for this account.
+          Finish setting up your program to unlock the dashboard, nutrition, and exercise tools.
         </p>
+        <Link
+          to="/setup"
+          className="mt-4 inline-flex items-center rounded-full bg-brand-navy px-5 py-2.5 text-sm font-semibold text-brand-off-white transition hover:bg-brand-navy/90 dark:bg-brand-green dark:text-brand-navy"
+        >
+          Complete setup
+        </Link>
       </div>
     );
   }
@@ -119,29 +147,22 @@ export function DashboardPage({ user }: { user?: AppUser | null }) {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <DashboardWelcome firstName={user?.firstName} />
+        <RemainingMacrosDisplay
+          caloriesRemaining={s.caloriesRemaining}
+          proteinRemaining={s.proteinRemaining}
+        />
         <DateTimeDisplay />
       </div>
 
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-app-text-muted mb-3">Navigation</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
           <QuickLink to="/program" icon={Target} label="Program" />
           <QuickLink to="/nutrition" icon={Apple} label="Nutrition" />
           <QuickLink to="/exercise" icon={Dumbbell} label="Exercise" />
+          <QuickLink to="/level-up" icon={TrendingUp} label="Level Up" />
           <QuickLink to="/progress" icon={LineChart} label="Progress" />
           <QuickLink to="/admin" icon={Settings} label="Admin" />
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-app-text-muted mb-3">Today&apos;s Summary</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
-          <MetricTile label="Current Weight" value={`${s.currentWeight} lbs`} />
-          <MetricTile label="Calories Left" value={`${s.caloriesRemaining}`} />
-          <MetricTile label="Protein Left" value={`${s.proteinRemaining}g`} />
-          <MetricTile label="Next Meal" value={s.nextMeal} />
-          <MetricTile label="Exercises Left" value={`${s.exercisesLeft}`} />
-          <MetricTile label="Goal Progress" value={`${s.goalProgress}%`} />
         </div>
       </section>
 

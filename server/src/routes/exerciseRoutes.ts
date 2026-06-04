@@ -11,8 +11,14 @@ import {
   getScheduledExercises,
   markDone,
   markScheduledExercise,
+  reorderScheduledExercises,
   updateScheduledExercise
 } from '../services/exerciseService.js';
+import {
+  applyTemplateToDate,
+  getProgramDefaultTemplate,
+  listTemplatesForUser
+} from '../services/exerciseTemplateService.js';
 import { prisma } from '../db/prisma.js';
 
 const optionalNumber = z.union([z.number(), z.null()]).optional();
@@ -78,6 +84,34 @@ export async function exerciseRoutes(app: FastifyInstance) {
     const date = (request.params as { date: string }).date;
     const body = z.object({ sourceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(request.body);
     return copyExercisesFromDate(request.appUser!.id, date, body.sourceDate, { replace: true });
+  });
+  app.post('/api/daily-logs/:date/exercises/reorder', { preHandler: requireAuth }, async (request) => {
+    const date = (request.params as { date: string }).date;
+    const body = z.object({ orderedIds: z.array(z.string()).min(1) }).parse(request.body);
+    return reorderScheduledExercises(request.appUser!.id, date, body.orderedIds);
+  });
+
+  app.get('/api/exercise-templates', { preHandler: requireAuth }, async () => listTemplatesForUser());
+
+  app.get('/api/exercise-templates/default', { preHandler: requireAuth }, async (request) =>
+    getProgramDefaultTemplate(request.appUser!.id)
+  );
+
+  app.post('/api/daily-logs/:date/apply-exercise-template', { preHandler: requireAuth }, async (request, reply) => {
+    const date = (request.params as { date: string }).date;
+    const body = z
+      .object({
+        templateId: z.string().trim().min(1),
+        setAsDefault: z.boolean().optional()
+      })
+      .parse(request.body);
+    try {
+      return await applyTemplateToDate(request.appUser!.id, date, body.templateId, {
+        setAsDefault: body.setAsDefault
+      });
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to apply template' });
+    }
   });
 
   app.patch('/api/scheduled-exercises/:id', { preHandler: requireAuth }, async (request) => {

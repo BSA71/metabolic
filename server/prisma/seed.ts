@@ -8,11 +8,14 @@ async function main() {
   await prisma.aiFoodLookup.deleteMany();
   await prisma.exerciseLog.deleteMany();
   await prisma.scheduledExercise.deleteMany();
+  await prisma.program.updateMany({ data: { defaultNutritionTemplateId: null, defaultExerciseTemplateId: null } });
+  await prisma.exerciseTemplate.deleteMany();
   await prisma.exercise.deleteMany();
   await prisma.mealItem.deleteMany();
   await prisma.meal.deleteMany();
   await prisma.dailyLog.deleteMany();
   await prisma.programMetric.deleteMany();
+  await prisma.nutritionPlanTemplate.deleteMany();
   await prisma.program.deleteMany();
   await prisma.foodAlias.deleteMany();
   await prisma.food.deleteMany();
@@ -81,14 +84,123 @@ async function main() {
     prisma.exercise.create({ data: { name: 'Mobility flow', category: 'Recovery', defaultDurationMinutes: 15 } })
   ]);
   for (const [index, exercise] of exercises.entries()) {
-    const scheduled = await prisma.scheduledExercise.create({ data: { programId: program.id, userId: user.id, exerciseId: exercise.id, scheduledDate: today, sets: exercise.defaultSets, reps: exercise.defaultReps, durationMinutes: exercise.defaultDurationMinutes, status: index === 0 ? 'DONE' : 'PLANNED' } });
+    const scheduled = await prisma.scheduledExercise.create({
+      data: {
+        programId: program.id,
+        userId: user.id,
+        exerciseId: exercise.id,
+        scheduledDate: today,
+        sets: exercise.defaultSets,
+        reps: exercise.defaultReps,
+        durationMinutes: exercise.defaultDurationMinutes,
+        status: index === 0 ? 'DONE' : 'PLANNED',
+        sortOrder: index
+      }
+    });
     if (index === 0) await prisma.exerciseLog.create({ data: { scheduledExerciseId: scheduled.id, userId: user.id, completed: true, completedAt: new Date(), actualDurationMinutes: 30, difficulty: 'NORMAL' } });
   }
 
   await prisma.dailyLog.update({ where: { id: log.id }, data: { caloriesActual: 710, proteinActual: 69, carbsActual: 67, fatActual: 16, mealsCompleted: 2, exercisesCompleted: 1, complianceScore: 33 } });
   await prisma.programTemplate.create({ data: { name: 'Fat Loss Foundation', description: 'Balanced macro plan with five meals and daily movement.', defaultCalories: 2200, defaultProtein: 190, defaultCarbs: 190, defaultFat: 70, defaultMealCount: 5 } });
   await prisma.mealTemplate.create({ data: { userId: user.id, name: 'Chicken and Rice Lunch', description: 'Simple high-protein lunch template.' } });
-  await prisma.exerciseTemplate.create({ data: { name: 'Daily Movement Checklist', description: 'Walk, squat, push, mobility.' } });
+
+  await prisma.exerciseTemplate.create({
+    data: {
+      name: 'Daily Movement Checklist',
+      description: 'Walk, squat, push, mobility.',
+      visibility: 'GLOBAL',
+      createdById: admin.id,
+      items: {
+        create: exercises.map((exercise, index) => ({
+          exerciseId: exercise.id,
+          sortOrder: index,
+          sets: exercise.defaultSets,
+          reps: exercise.defaultReps,
+          durationMinutes: exercise.defaultDurationMinutes
+        }))
+      }
+    }
+  });
+
+  await prisma.exerciseTemplate.create({
+    data: {
+      name: 'Strength Focus',
+      description: 'Strength-heavy day with a cardio finisher.',
+      visibility: 'GLOBAL',
+      createdById: admin.id,
+      items: {
+        create: [
+          { exerciseId: exercises[1].id, sortOrder: 0, sets: 4, reps: 8 },
+          { exerciseId: exercises[2].id, sortOrder: 1, sets: 4, reps: 10 },
+          { exerciseId: exercises[0].id, sortOrder: 2, durationMinutes: 20 }
+        ]
+      }
+    }
+  });
+
+  await prisma.nutritionPlanTemplate.create({
+    data: {
+      name: 'Balanced 2200',
+      description: 'Moderate calorie plan with five balanced meals.',
+      visibility: 'GLOBAL',
+      calorieTarget: 2200,
+      proteinTarget: 190,
+      carbTarget: 190,
+      fatTarget: 70,
+      createdById: admin.id,
+      meals: {
+        create: [
+          {
+            mealNumber: 1,
+            name: 'Breakfast',
+            plannedTime: '07:30',
+            items: { create: [{ foodId: foods[4].id, nameSnapshot: foods[4].name, quantity: 1, unit: foods[4].servingUnit, calories: foods[4].calories, protein: foods[4].protein, carbs: foods[4].carbs, fat: foods[4].fat }, { foodId: foods[3].id, nameSnapshot: foods[3].name, quantity: 1, unit: foods[3].servingUnit, calories: foods[3].calories, protein: foods[3].protein, carbs: foods[3].carbs, fat: foods[3].fat }] }
+          },
+          {
+            mealNumber: 2,
+            name: 'Snack',
+            plannedTime: '10:30',
+            items: { create: [{ foodId: foods[2].id, nameSnapshot: foods[2].name, quantity: 1, unit: foods[2].servingUnit, calories: foods[2].calories, protein: foods[2].protein, carbs: foods[2].carbs, fat: foods[2].fat }] }
+          },
+          {
+            mealNumber: 3,
+            name: 'Lunch',
+            plannedTime: '12:30',
+            items: { create: [{ foodId: foods[0].id, nameSnapshot: foods[0].name, quantity: 1, unit: foods[0].servingUnit, calories: foods[0].calories, protein: foods[0].protein, carbs: foods[0].carbs, fat: foods[0].fat }, { foodId: foods[1].id, nameSnapshot: foods[1].name, quantity: 1, unit: foods[1].servingUnit, calories: foods[1].calories, protein: foods[1].protein, carbs: foods[1].carbs, fat: foods[1].fat }] }
+          },
+          { mealNumber: 4, name: 'Snack', plannedTime: '15:30', items: { create: [{ foodId: foods[7].id, nameSnapshot: foods[7].name, quantity: 1, unit: foods[7].servingUnit, calories: foods[7].calories, protein: foods[7].protein, carbs: foods[7].carbs, fat: foods[7].fat }] } },
+          {
+            mealNumber: 5,
+            name: 'Dinner',
+            plannedTime: '18:30',
+            items: { create: [{ foodId: foods[5].id, nameSnapshot: foods[5].name, quantity: 1, unit: foods[5].servingUnit, calories: foods[5].calories, protein: foods[5].protein, carbs: foods[5].carbs, fat: foods[5].fat }, { foodId: foods[6].id, nameSnapshot: foods[6].name, quantity: 1, unit: foods[6].servingUnit, calories: foods[6].calories, protein: foods[6].protein, carbs: foods[6].carbs, fat: foods[6].fat }] }
+          }
+        ]
+      }
+    }
+  });
+
+  await prisma.nutritionPlanTemplate.create({
+    data: {
+      name: 'High Protein Cut',
+      description: 'Higher protein targets with lean meals throughout the day.',
+      visibility: 'GLOBAL',
+      calorieTarget: 2050,
+      proteinTarget: 205,
+      carbTarget: 160,
+      fatTarget: 65,
+      createdById: admin.id,
+      meals: {
+        create: [
+          { mealNumber: 1, name: 'Breakfast', plannedTime: '07:30', items: { create: [{ foodId: foods[4].id, nameSnapshot: foods[4].name, quantity: 2, unit: foods[4].servingUnit, calories: Number(foods[4].calories) * 2, protein: Number(foods[4].protein) * 2, carbs: Number(foods[4].carbs) * 2, fat: Number(foods[4].fat) * 2 }] } },
+          { mealNumber: 2, name: 'Snack', plannedTime: '10:30', items: { create: [{ foodId: foods[7].id, nameSnapshot: foods[7].name, quantity: 1, unit: foods[7].servingUnit, calories: foods[7].calories, protein: foods[7].protein, carbs: foods[7].carbs, fat: foods[7].fat }] } },
+          { mealNumber: 3, name: 'Lunch', plannedTime: '12:30', items: { create: [{ foodId: foods[0].id, nameSnapshot: foods[0].name, quantity: 1.5, unit: foods[0].servingUnit, calories: Number(foods[0].calories) * 1.5, protein: Number(foods[0].protein) * 1.5, carbs: Number(foods[0].carbs) * 1.5, fat: Number(foods[0].fat) * 1.5 }] } },
+          { mealNumber: 4, name: 'Snack', plannedTime: '15:30', items: { create: [{ foodId: foods[2].id, nameSnapshot: foods[2].name, quantity: 1, unit: foods[2].servingUnit, calories: foods[2].calories, protein: foods[2].protein, carbs: foods[2].carbs, fat: foods[2].fat }] } },
+          { mealNumber: 5, name: 'Dinner', plannedTime: '18:30', items: { create: [{ foodId: foods[5].id, nameSnapshot: foods[5].name, quantity: 1, unit: foods[5].servingUnit, calories: foods[5].calories, protein: foods[5].protein, carbs: foods[5].carbs, fat: foods[5].fat }] } }
+        ]
+      }
+    }
+  });
 }
 
 main().finally(async () => prisma.$disconnect());

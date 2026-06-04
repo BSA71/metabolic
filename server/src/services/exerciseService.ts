@@ -4,7 +4,7 @@ import { parseDateParam, toDateKey } from '../utils/dates.js';
 import { ensureDailyLogByUserId } from './dailyLogService.js';
 import { recalculateDailyLogTotals } from './totalsService.js';
 
-async function getActiveProgram(userId: string) {
+export async function getActiveProgram(userId: string) {
   return prisma.program.findFirst({
     where: { userId, status: ProgramStatus.ACTIVE }
   });
@@ -24,20 +24,28 @@ export async function getExercises() {
 
 const completedExerciseStatuses = new Set<ExerciseStatus>(['DONE', 'SKIPPED', 'MISSED']);
 
-export function sortScheduledExercises<T extends { status: ExerciseStatus; createdAt: Date }>(items: T[]) {
+export function sortScheduledExercises<T extends { status: ExerciseStatus; sortOrder: number }>(items: T[]) {
   return [...items].sort((a, b) => {
     const aCompleted = completedExerciseStatuses.has(a.status);
     const bCompleted = completedExerciseStatuses.has(b.status);
     if (aCompleted !== bCompleted) return aCompleted ? 1 : -1;
-    return a.createdAt.getTime() - b.createdAt.getTime();
+    return a.sortOrder - b.sortOrder;
   });
+}
+
+async function nextSortOrder(userId: string, date: string) {
+  const maxOrder = await prisma.scheduledExercise.aggregate({
+    where: { userId, scheduledDate: parseDateParam(date) },
+    _max: { sortOrder: true }
+  });
+  return (maxOrder._max.sortOrder ?? -1) + 1;
 }
 
 export async function getScheduledExercises(userId: string, date: string) {
   const items = await prisma.scheduledExercise.findMany({
     where: { userId, scheduledDate: parseDateParam(date) },
     include: { exercise: true, log: true },
-    orderBy: { createdAt: 'asc' }
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
   });
   return sortScheduledExercises(items);
 }
@@ -95,7 +103,8 @@ export async function createScheduledExercise(
       durationMinutes: data.durationMinutes ?? catalog.defaultDurationMinutes,
       distance: data.distance ?? catalog.defaultDistance,
       weight: data.weight ?? null,
-      status: ExerciseStatus.PLANNED
+      status: ExerciseStatus.PLANNED,
+      sortOrder: await nextSortOrder(userId, date)
     },
     include: { exercise: true, log: true }
   });
@@ -176,7 +185,8 @@ async function copyExercisesToDate(
       durationMinutes: item.durationMinutes,
       distance: item.distance,
       weight: item.weight,
-      status: ExerciseStatus.PLANNED
+      status: ExerciseStatus.PLANNED,
+      sortOrder: item.sortOrder
     }))
   });
 
@@ -261,4 +271,35 @@ export async function markAllPlannedExercisesDone(userId: string, date: string) 
     await markDone(userId, item.id);
   }
   return toComplete.map((item) => item.exercise.name);
+}
+
+export async function reorderScheduledExercises(userId: string, date: string, orderedIds: string[]) {
+  const day = parseDateParam(date);
+  const items = await prisma.scheduledExercise.findMany({
+    where: { userId, scheduledDate: day },
+    select: { id: true, status: true, sortOrder: true },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+  });
+
+  const planned = items.filter((item) => item.status === ExerciseStatus.PLANNED);
+  const completed = items.filter((item) => item.status !== ExerciseStatus.PLANNED);
+  const plannedIds = new Set(planned.map((item) => item.id));
+
+  if (orderedIds.length !== planned.length || orderedIds.some((id) => !plannedIds.has(id))) {
+    throw new Error('Invalid exercise order');
+  }
+
+  await prisma.$transaction([
+    ...orderedIds.map((id, index) =>
+      prisma.scheduledExercise.update({ where: { id }, data: { sortOrder: index } })
+    ),
+    ...completed.map((item, index) =>
+      prisma.scheduledExercise.update({
+        where: { id: item.id },
+        data: { sortOrder: orderedIds.length + index }
+      })
+    )
+  ]);
+
+  return getScheduledExercises(userId, date);
 }

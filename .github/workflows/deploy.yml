@@ -47,9 +47,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run database migrations
+        run: ./scripts/run-cloud-migrations.sh
+
       - name: Deploy API and client
         env:
           CI: "true"
+          SKIP_DB_MIGRATIONS: "true"
           IMAGE_TAG: ${{ github.sha }}
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}

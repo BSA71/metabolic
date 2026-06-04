@@ -16,6 +16,13 @@ CI="${CI:-false}"
 cd "$ROOT_DIR"
 gcloud config set project "$PROJECT_ID"
 
+echo "==> Apply database migrations"
+if [[ "${SKIP_DB_MIGRATIONS:-false}" != "true" ]]; then
+  "$ROOT_DIR/scripts/run-cloud-migrations.sh"
+else
+  echo "Skipped (SKIP_DB_MIGRATIONS=true)"
+fi
+
 echo "==> Configure Docker for Artifact Registry"
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
@@ -81,8 +88,11 @@ fi
 
 npm run build --workspace client
 
-echo "==> Deploy Firebase Hosting"
-npx --yes firebase-tools@13 deploy --only hosting --project "$PROJECT_ID"
+echo "==> Ensure Firebase Storage is initialized"
+"$ROOT_DIR/scripts/ensure-firebase-storage.sh"
+
+echo "==> Deploy Firebase Hosting and Storage rules"
+npx --yes firebase-tools@13 deploy --only hosting,storage --project "$PROJECT_ID"
 
 echo ""
 echo "Deployed."
