@@ -5,11 +5,35 @@ import { api } from '../services/api';
 import { getIdToken } from '../services/auth';
 import { DashboardWelcome } from '../components/dashboard/DashboardWelcome';
 import type { AppUser, Dashboard } from '../types';
-import { MetricTile } from '../components/dashboard/MetricTile';
 import { TodayNutrition } from '../components/dashboard/TodayNutrition';
 import { TodayExercise } from '../components/dashboard/TodayExercise';
 import { MacroProgress } from '../components/dashboard/MacroProgress';
 import { WeightTrendChart } from '../components/dashboard/WeightTrendChart';
+
+function RemainingMacrosDisplay({
+  caloriesRemaining,
+  proteinRemaining
+}: {
+  caloriesRemaining: number;
+  proteinRemaining: number;
+}) {
+  return (
+    <div className="flex gap-6 sm:gap-8 text-left sm:text-center">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-app-text-muted">Calories left</p>
+        <p className="text-xl font-semibold tabular-nums text-brand-navy dark:text-brand-off-white">
+          {caloriesRemaining}
+        </p>
+      </div>
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-app-text-muted">Protein left</p>
+        <p className="text-xl font-semibold tabular-nums text-brand-navy dark:text-brand-off-white">
+          {proteinRemaining}g
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function DateTimeDisplay() {
   const [now, setNow] = useState(() => new Date());
@@ -124,6 +148,10 @@ export function DashboardPage({ user }: { user?: AppUser | null }) {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <DashboardWelcome firstName={user?.firstName} />
+        <RemainingMacrosDisplay
+          caloriesRemaining={s.caloriesRemaining}
+          proteinRemaining={s.proteinRemaining}
+        />
         <DateTimeDisplay />
       </div>
 
@@ -135,18 +163,6 @@ export function DashboardPage({ user }: { user?: AppUser | null }) {
           <QuickLink to="/exercise" icon={Dumbbell} label="Exercise" />
           <QuickLink to="/progress" icon={LineChart} label="Progress" />
           <QuickLink to="/admin" icon={Settings} label="Admin" />
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-app-text-muted mb-3">Today&apos;s Summary</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
-          <MetricTile label="Current Weight" value={`${s.currentWeight} lbs`} />
-          <MetricTile label="Calories Left" value={`${s.caloriesRemaining}`} />
-          <MetricTile label="Protein Left" value={`${s.proteinRemaining}g`} />
-          <MetricTile label="Next Meal" value={s.nextMeal} />
-          <MetricTile label="Exercises Left" value={`${s.exercisesLeft}`} />
-          <MetricTile label="Goal Progress" value={`${s.goalProgress}%`} />
         </div>
       </section>
 
