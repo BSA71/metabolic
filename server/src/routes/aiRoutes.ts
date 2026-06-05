@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/requireAuth.js';
-import { acceptFoodLookup, acceptFoodLookups, lookupFood } from '../services/foodLookupService.js';
+import { acceptFoodLookup, acceptFoodLookups, lookupFood, lookupFoodFromImage } from '../services/foodLookupService.js';
 import { acceptExerciseLookup, lookupExercise } from '../services/exerciseLookupService.js';
 import { chatWithAssistant } from '../services/assistantService.js';
 
@@ -14,6 +14,26 @@ export async function aiRoutes(app: FastifyInstance) {
   app.post('/api/ai/food-lookup', { preHandler: requireAuth }, async (request) => {
     const body = z.object({ inputText: z.string().min(2) }).parse(request.body);
     return lookupFood(request.appUser!.id, body.inputText);
+  });
+  app.post('/api/ai/food-lookup/photo', { preHandler: requireAuth }, async (request) => {
+    const body = z
+      .object({
+        imageBase64: z.string().min(1),
+        mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+        inputText: z.string().optional()
+      })
+      .parse(request.body);
+    const imageBytes = Buffer.byteLength(body.imageBase64, 'base64');
+    if (imageBytes > 10 * 1024 * 1024) {
+      const error = new Error('Image must be 10 MB or smaller.');
+      (error as Error & { statusCode?: number }).statusCode = 413;
+      throw error;
+    }
+    return lookupFoodFromImage(
+      request.appUser!.id,
+      { data: body.imageBase64, mimeType: body.mimeType },
+      body.inputText
+    );
   });
   app.post('/api/ai/food-lookup/accept-batch', { preHandler: requireAuth }, async (request) => {
     const body = z.object({

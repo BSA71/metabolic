@@ -12,7 +12,7 @@ const MODE_CONFIG = {
     title: 'Edit plan',
     foodsLabel: 'Planned foods',
     emptyLabel: 'No foods planned yet.',
-    panelClass: 'bg-yellow-50',
+    panelClass: 'bg-brand-gold/10 ring-brand-gold/20',
     aiLabel: 'Ask AI to plan',
     manualHint: 'Adding or editing foods recalculates planned totals automatically.',
     totals: (meal: Meal) => ({
@@ -32,7 +32,7 @@ const MODE_CONFIG = {
     title: 'Log actual',
     foodsLabel: 'Logged foods',
     emptyLabel: 'Nothing logged yet.',
-    panelClass: 'bg-blue-50',
+    panelClass: 'bg-brand-green/10 ring-brand-green/20',
     aiLabel: 'Ask AI to log',
     manualHint: 'Adding or editing foods recalculates actual totals automatically.',
     totals: (meal: Meal) => ({
@@ -134,26 +134,26 @@ export function EditMealPlanDrawer({
     <Drawer open={open} title={meal ? `${config.title} — ${meal.name}` : config.title} onClose={onClose}>
       <div className="space-y-6">
         <div>
-          <p className="mb-2 text-sm font-semibold text-slate-700">{config.foodsLabel}</p>
+          <p className="mb-2 text-sm font-semibold text-app-text">{config.foodsLabel}</p>
           {items.length === 0 ? (
-            <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">{config.emptyLabel}</p>
+            <p className="rounded-2xl bg-app-muted p-4 text-sm text-app-text-muted">{config.emptyLabel}</p>
           ) : (
             <ul className="space-y-2">
               {items.map((item) => (
-                <li key={item.id} className={`flex items-center justify-between gap-2 rounded-2xl p-3 ${config.panelClass}`}>
+                <li key={item.id} className={`flex items-center justify-between gap-2 rounded-2xl p-3 ring-1 ${config.panelClass}`}>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{item.nameSnapshot}</p>
-                    <p className="text-xs text-slate-500">{formatMacros(item)}</p>
+                    <p className="truncate font-medium text-app-text">{item.nameSnapshot}</p>
+                    <p className="text-xs text-app-text-muted">{formatMacros(item)}</p>
                   </div>
                   <input
                     type="number"
                     min={0.25}
                     step={0.25}
-                    className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                    className="w-16 rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
                     value={Number(item.quantity)}
                     onChange={(event) => updateQuantity(item, Number(event.target.value))}
                   />
-                  <button type="button" className="text-sm text-slate-500 hover:text-red-600" onClick={() => removeItem(item.id)}>×</button>
+                  <button type="button" className="text-sm text-app-text-muted hover:text-red-500" onClick={() => removeItem(item.id)}>×</button>
                 </li>
               ))}
             </ul>
@@ -167,19 +167,19 @@ export function EditMealPlanDrawer({
         </Button>
 
         {!hasItems && (
-          <div className="border-t border-slate-100 pt-4">
-            <button type="button" className="text-sm font-semibold text-slate-700" onClick={() => setManualOpen(!manualOpen)}>
+          <div className="border-t border-app-border pt-4">
+            <button type="button" className="text-sm font-semibold text-app-text" onClick={() => setManualOpen(!manualOpen)}>
               {manualOpen ? 'Hide manual totals' : 'Set totals manually'}
             </button>
             {manualOpen && (
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {(['calories', 'protein', 'carbs', 'fat'] as const).map((field) => (
                   <label key={field} className="text-sm">
-                    <span className="mb-1 block capitalize text-slate-500">{field === 'calories' ? 'Kcal' : `${field} (g)`}</span>
+                    <span className="mb-1 block capitalize text-app-text-muted">{field === 'calories' ? 'Kcal' : `${field} (g)`}</span>
                     <input
                       type="number"
                       min={0}
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                      className="w-full rounded-xl border border-app-border bg-app-surface px-3 py-2 text-app-text"
                       value={manual[field]}
                       onChange={(event) => setManual({ ...manual, [field]: Number(event.target.value) })}
                     />
@@ -193,7 +193,7 @@ export function EditMealPlanDrawer({
           </div>
         )}
 
-        {hasItems && <p className="text-xs text-slate-500">{config.manualHint}</p>}
+        {hasItems && <p className="text-xs text-app-text-muted">{config.manualHint}</p>}
       </div>
     </Drawer>
   );

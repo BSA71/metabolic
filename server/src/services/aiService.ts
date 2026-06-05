@@ -28,6 +28,7 @@ export type ChatChannel = 'web' | 'sms';
 
 export interface AiProvider {
   lookupFood(input: string): Promise<FoodEstimate[]>;
+  lookupFoodFromImage(image: { data: string; mimeType: string }, input?: string): Promise<FoodEstimate[]>;
   lookupExercises(input: string): Promise<ExerciseEstimate[]>;
   chat(messages: ChatMessage[], context: string, channel?: ChatChannel): Promise<string>;
 }
@@ -244,6 +245,10 @@ class MockAiProvider implements AiProvider {
     });
   }
 
+  async lookupFoodFromImage(_image: { data: string; mimeType: string }, input = 'uploaded meal photo'): Promise<FoodEstimate[]> {
+    return this.lookupFood(input || 'uploaded meal photo');
+  }
+
   async lookupExercises(input: string): Promise<ExerciseEstimate[]> {
     const query = input.trim();
     const lower = query.toLowerCase();
@@ -418,6 +423,24 @@ class GeminiAiProvider implements AiProvider {
       return parsed.items.map(normalizeEstimate);
     } catch (error) {
       throw wrapAiError(error, 'food lookup');
+    }
+  }
+
+  async lookupFoodFromImage(image: { data: string; mimeType: string }, input = ''): Promise<FoodEstimate[]> {
+    try {
+      const prompt = `${FOOD_LOOKUP_PROMPT}
+
+Estimate the visible food in this image. Use the optional user note only as context; do not invent foods that are not visible.
+Optional user note: ${input.trim() || 'none'}`;
+
+      const result = await this.foodModel().generateContent([
+        { text: prompt },
+        { inlineData: { mimeType: image.mimeType, data: image.data } }
+      ]);
+      const parsed = foodLookupResponseSchema.parse(JSON.parse(result.response.text()));
+      return parsed.items.map(normalizeEstimate);
+    } catch (error) {
+      throw wrapAiError(error, 'food photo lookup');
     }
   }
 
