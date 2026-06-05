@@ -91,6 +91,18 @@ function selectSnackFallback(meals: Meal[]) {
   return meals[0];
 }
 
+function formatPlannedTime(plannedTime?: string | null) {
+  if (!plannedTime) return null;
+  const match = plannedTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return plannedTime;
+
+  const [, hour, minute] = match;
+  return new Date(2000, 0, 1, Number(hour), Number(minute))
+    .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    .replace(' AM', 'am')
+    .replace(' PM', 'pm');
+}
+
 export function TodayNutrition({
   meals,
   onChange
@@ -219,6 +231,7 @@ export function TodayNutrition({
         {meals.map((meal) => {
           const expanded = expandedMealId === meal.id;
           const plannedCount = (meal.items ?? []).filter((item) => item.type === 'PLANNED').length;
+          const plannedTime = formatPlannedTime(meal.plannedTime);
 
           return (
             <div key={meal.id} className="overflow-hidden rounded-2xl bg-app-muted">
@@ -230,7 +243,7 @@ export function TodayNutrition({
               >
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-app-text">
-                    {meal.mealNumber}. {meal.name}
+                    {meal.mealNumber}. {plannedTime ? `${meal.name} - ${plannedTime}` : meal.name}
                   </p>
                   <p className="text-sm text-app-text-muted">
                     {Math.round(Number(meal.actualCalories))} / {Math.round(Number(meal.plannedCalories))} kcal

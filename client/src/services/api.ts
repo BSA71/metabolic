@@ -34,7 +34,12 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-export const todayKey = () => new Date().toISOString().slice(0, 10);
+export function todayKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 export function parseDateKey(date: string) {
   const [year, month, day] = date.split('-').map(Number);
