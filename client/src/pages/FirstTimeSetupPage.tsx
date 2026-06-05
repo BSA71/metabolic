@@ -21,6 +21,8 @@ export function FirstTimeSetupPage({ user, onComplete }: FirstTimeSetupPageProps
   const [goalWeight, setGoalWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
   const [goalBodyFat, setGoalBodyFat] = useState('');
+  const [coachCode, setCoachCode] = useState('');
+  const [wantsCoach, setWantsCoach] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -58,7 +60,9 @@ export function FirstTimeSetupPage({ user, onComplete }: FirstTimeSetupPageProps
           weight: currentWeight,
           goalWeight: targetWeight,
           ...(currentBodyFat !== undefined ? { bodyFat: currentBodyFat } : {}),
-          ...(targetBodyFat !== undefined ? { goalBodyFat: targetBodyFat } : {})
+          ...(targetBodyFat !== undefined ? { goalBodyFat: targetBodyFat } : {}),
+          ...(coachCode.trim() ? { coachCode: coachCode.trim() } : {}),
+          ...(wantsCoach ? { wantsCoach: true } : {})
         })
       });
       onComplete();
@@ -178,9 +182,36 @@ export function FirstTimeSetupPage({ user, onComplete }: FirstTimeSetupPageProps
             </div>
           </div>
 
+          <div className="rounded-2xl border border-app-border bg-app-muted/40 p-4">
+            <p className="text-sm font-semibold text-app-text">Coach support</p>
+            <p className="mt-1 text-sm text-app-text-muted">
+              Optional. We&apos;ll start you with a balanced plan either way, and a coach can personalize it later.
+            </p>
+            <label htmlFor="coach-code" className="mt-3 block text-sm font-medium text-app-text">
+              Coach initials or code
+            </label>
+            <input
+              id="coach-code"
+              className={`${inputClass} mt-2 uppercase`}
+              value={coachCode}
+              onChange={(e) => setCoachCode(e.target.value.toUpperCase())}
+              placeholder="DF"
+              maxLength={20}
+            />
+            <label className="mt-3 flex items-start gap-3 text-sm text-app-text">
+              <input
+                className="mt-1"
+                type="checkbox"
+                checked={wantsCoach}
+                onChange={(e) => setWantsCoach(e.target.checked)}
+              />
+              <span>I&apos;d like to work with a real coach.</span>
+            </label>
+          </div>
+
           <p className="text-sm text-app-text-muted">
-            We&apos;ll start you with a full metric profile, five daily meals, and a starter exercise checklist.
-            Leave body fat blank to use sensible defaults, or fine-tune everything later on your Program page.
+            We&apos;ll start you with a full metric profile, a starter nutrition plan, and an exercise checklist.
+            Leave body fat blank to use sensible defaults, or fine-tune everything later.
           </p>
 
           <button

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Target, Apple, Dumbbell, LineChart, Settings, TrendingUp } from 'lucide-react';
+import { Target, Apple, Dumbbell, LineChart, Settings, TrendingUp, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { getIdToken } from '../services/auth';
@@ -9,6 +9,7 @@ import { TodayNutrition } from '../components/dashboard/TodayNutrition';
 import { TodayExercise } from '../components/dashboard/TodayExercise';
 import { MacroProgress } from '../components/dashboard/MacroProgress';
 import { WeightTrendChart } from '../components/dashboard/WeightTrendChart';
+import { isAdminRole, isCoachRole } from '../utils/roles';
 function RemainingMacrosDisplay({
   caloriesRemaining,
   proteinRemaining
@@ -162,7 +163,8 @@ export function DashboardPage({ user }: { user?: AppUser | null }) {
           <QuickLink to="/exercise" icon={Dumbbell} label="Exercise" />
           <QuickLink to="/level-up" icon={TrendingUp} label="Level Up" />
           <QuickLink to="/progress" icon={LineChart} label="Progress" />
-          <QuickLink to="/admin" icon={Settings} label="Admin" />
+          {isCoachRole(user?.role) && <QuickLink to="/coach" icon={Users} label="Coach" />}
+          {isAdminRole(user?.role) && <QuickLink to="/admin" icon={Settings} label="Admin" />}
         </div>
       </section>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AdminUser, Role, UserStatus } from '../../types';
+import type { AdminUser, Role, UserStatus, UserSummary } from '../../types';
 import { api } from '../../services/api';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
@@ -43,30 +43,35 @@ export function EditUserDrawer({
   open,
   user,
   onClose,
-  onSaved
+  onSaved,
+  coaches
 }: {
   open: boolean;
   user?: AdminUser;
+  coaches?: UserSummary[];
   onClose: () => void;
   onSaved: (user: AdminUser) => void;
 }) {
   return (
     <Drawer open={open} title={user ? `${user.firstName} ${user.lastName}` : 'Edit user'} onClose={onClose}>
-      {open && user && <EditUserDrawerContent key={user.id} user={user} onClose={onClose} onSaved={onSaved} />}
+      {open && user && <EditUserDrawerContent key={user.id} user={user} coaches={coaches ?? []} onClose={onClose} onSaved={onSaved} />}
     </Drawer>
   );
 }
 
 function EditUserDrawerContent({
   user,
+  coaches,
   onClose,
   onSaved
 }: {
   user: AdminUser;
+  coaches: UserSummary[];
   onClose: () => void;
   onSaved: (user: AdminUser) => void;
 }) {
   const [draft, setDraft] = useState(() => toDraft(user));
+  const [coachId, setCoachId] = useState(user.assignedCoach?.id ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -93,7 +98,16 @@ function EditUserDrawerContent({
         method: 'PATCH',
         body: JSON.stringify(payload)
       });
-      onSaved(updated);
+      let nextUser = updated;
+      if (coachId !== (user.assignedCoach?.id ?? '')) {
+        nextUser = coachId
+          ? await api<AdminUser>(`/api/admin/users/${user.id}/coach-assignment`, {
+              method: 'PUT',
+              body: JSON.stringify({ coachId })
+            })
+          : await api<AdminUser>(`/api/admin/users/${user.id}/coach-assignment`, { method: 'DELETE' });
+      }
+      onSaved(nextUser);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save user');
@@ -146,6 +160,19 @@ function EditUserDrawerContent({
             </option>
           ))}
         </select>
+      </label>
+
+      <label className="block">
+        <span className={labelClassName()}>Primary coach</span>
+        <select className={inputClassName()} value={coachId} onChange={(event) => setCoachId(event.target.value)}>
+          <option value="">No coach assigned</option>
+          {coaches.map((coach) => (
+            <option key={coach.id} value={coach.id}>
+              {coach.firstName} {coach.lastName} ({coach.email})
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-slate-500">Only super admins can save coach assignment changes.</p>
       </label>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

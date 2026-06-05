@@ -24,6 +24,42 @@ export type AdminFoodUpdate = {
   verified?: boolean;
 };
 
+const userInclude = {
+  userAssignments: {
+    include: {
+      coach: {
+        select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true }
+      }
+    }
+  }
+};
+
+export function serializeAdminUser(user: Awaited<ReturnType<typeof listAdminUsers>>[number]) {
+  const assignment = user.userAssignments[0];
+  return {
+    id: user.id,
+    firebaseUid: user.firebaseUid,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: user.phone,
+    role: user.role,
+    status: user.status,
+    coachCode: user.coachCode,
+    coachRequestedAt: user.coachRequestedAt?.toISOString() ?? null,
+    createdAt: user.createdAt.toISOString(),
+    updatedAt: user.updatedAt.toISOString(),
+    assignedCoach: assignment?.coach
+      ? {
+          id: assignment.coach.id,
+          firstName: assignment.coach.firstName,
+          lastName: assignment.coach.lastName,
+          email: assignment.coach.email
+        }
+      : null
+  };
+}
+
 export function serializeAdminFood(food: Awaited<ReturnType<typeof listAdminFoods>>[number]) {
   return {
     id: food.id,
@@ -61,7 +97,15 @@ export function serializeReviewFood(food: Awaited<ReturnType<typeof listAdminFoo
 }
 
 export async function listAdminUsers() {
-  return prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+  return prisma.user.findMany({ include: userInclude, orderBy: { createdAt: 'desc' } });
+}
+
+export async function listCoaches() {
+  return prisma.user.findMany({
+    where: { role: Role.COACH, status: { not: UserStatus.DISABLED } },
+    select: { id: true, firstName: true, lastName: true, email: true },
+    orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }]
+  });
 }
 
 export async function listAdminFoods() {
@@ -90,7 +134,35 @@ export async function updateAdminUser(id: string, data: AdminUserUpdate) {
       });
     }
 
-    return user;
+    return tx.user.findUniqueOrThrow({ where: { id: user.id }, include: userInclude });
+  });
+}
+
+export async function assignPrimaryCoach(userId: string, coachId: string) {
+  if (userId === coachId) throw new Error('A user cannot be assigned as their own coach');
+  const [user, coach] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId } }),
+    prisma.user.findUnique({ where: { id: coachId } })
+  ]);
+  if (!user) throw new Error('User not found');
+  if (!coach || coach.role !== Role.COACH) throw new Error('Coach not found');
+
+  return prisma.$transaction(async (tx) => {
+    await tx.coachAssignment.deleteMany({ where: { userId } });
+    await tx.coachAssignment.create({ data: { userId, coachId } });
+    await tx.program.updateMany({
+      where: { userId },
+      data: { coachId }
+    });
+    return tx.user.findUniqueOrThrow({ where: { id: userId }, include: userInclude });
+  });
+}
+
+export async function unassignPrimaryCoach(userId: string) {
+  return prisma.$transaction(async (tx) => {
+    await tx.coachAssignment.deleteMany({ where: { userId } });
+    await tx.program.updateMany({ where: { userId }, data: { coachId: null } });
+    return tx.user.findUniqueOrThrow({ where: { id: userId }, include: userInclude });
   });
 }
 

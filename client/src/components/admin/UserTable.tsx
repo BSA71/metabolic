@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api';
-import type { AdminUser } from '../../types';
+import type { AdminUser, UserSummary } from '../../types';
 import { Card } from '../ui/Card';
 import { EditUserDrawer } from './EditUserDrawer';
 
@@ -24,6 +24,7 @@ function statusClass(status: AdminUser['status']) {
 
 export function UserTable() {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [coaches, setCoaches] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -34,8 +35,12 @@ export function UserTable() {
     setLoading(true);
     setError('');
     try {
-      const rows = await api<AdminUser[]>('/api/admin/users');
+      const [rows, coachRows] = await Promise.all([
+        api<AdminUser[]>('/api/admin/users'),
+        api<UserSummary[]>('/api/admin/coaches').catch(() => [])
+      ]);
       setUsers(rows);
+      setCoaches(coachRows);
       setSelectedUserId((current) => (current && rows.some((user) => user.id === current) ? current : null));
     } catch (err) {
       setUsers([]);
@@ -85,6 +90,8 @@ export function UserTable() {
                   <th className="py-3 pr-4 font-medium">Name</th>
                   <th className="py-3 pr-4 font-medium">Email</th>
                   <th className="py-3 pr-4 font-medium">Role</th>
+                  <th className="py-3 pr-4 font-medium">Coach</th>
+                  <th className="py-3 pr-4 font-medium">Request</th>
                   <th className="py-3 pr-4 font-medium">Status</th>
                   <th className="py-3 pr-4 font-medium">Phone</th>
                   <th className="py-3 font-medium">Joined</th>
@@ -113,6 +120,12 @@ export function UserTable() {
                       </td>
                       <td className="py-3 pr-4 text-slate-600">{user.email}</td>
                       <td className="py-3 pr-4 text-slate-600">{formatRole(user.role)}</td>
+                      <td className="py-3 pr-4 text-slate-600">
+                        {user.assignedCoach ? `${user.assignedCoach.firstName} ${user.assignedCoach.lastName}` : '—'}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-600">
+                        {user.coachRequestedAt && !user.assignedCoach ? 'Coach requested' : '—'}
+                      </td>
                       <td className="py-3 pr-4">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(user.status)}`}>
                           {user.status}
@@ -133,6 +146,7 @@ export function UserTable() {
       <EditUserDrawer
         open={Boolean(selectedUser)}
         user={selectedUser}
+        coaches={coaches}
         onClose={() => setSelectedUserId(null)}
         onSaved={handleSaved}
       />

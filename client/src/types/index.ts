@@ -1,7 +1,14 @@
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'COACH' | 'USER' | 'VIEWER';
 export type UserStatus = 'ACTIVE' | 'INVITED' | 'DISABLED';
 export type AppUser = { id: string; email: string; firstName: string; lastName: string; role: Role; phone?: string };
-export type AdminUser = AppUser & { status: UserStatus; createdAt: string };
+export type UserSummary = Pick<AppUser, 'id' | 'firstName' | 'lastName' | 'email'>;
+export type AdminUser = AppUser & {
+  status: UserStatus;
+  createdAt: string;
+  coachCode?: string | null;
+  coachRequestedAt?: string | null;
+  assignedCoach?: UserSummary | null;
+};
 export type Food = { id: string; name: string; servingSize: number; servingUnit: string; calories: number; protein: number; carbs: number; fat: number; brand?: string };
 export type FoodSource = 'MANUAL' | 'AI' | 'IMPORTED' | 'VERIFIED';
 export type FoodVisibility = 'GLOBAL' | 'USER';
@@ -134,3 +141,25 @@ export type ExercisePlanTemplate = ExercisePlanTemplateSummary & {
   items: ExerciseTemplateItem[];
 };
 export type Dashboard = { program: Program | null; dailyLog: any; meals: Meal[]; exercises: Exercise[]; summary: { currentWeight: number; caloriesRemaining: number; proteinRemaining: number; nextMeal: string; exercisesLeft: number; goalProgress: number } | null; weightTrend: { date: string; weight: number }[] };
+export type CoachClient = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string | null;
+  status: UserStatus;
+  assignedAt: string;
+  activeProgram: { id: string; name: string; startDate: string; currentWeight: number | null; metricCount: number } | null;
+  latestDailyLog: {
+    date: string;
+    mealsCompleted: number;
+    mealsPlanned: number;
+    exercisesCompleted: number;
+    exercisesPlanned: number;
+  } | null;
+  latestProgressSnapshot: {
+    snapshotDate: string;
+    weight: number | null;
+    completionStatus: string;
+  } | null;
+};
