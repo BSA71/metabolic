@@ -9,13 +9,13 @@ export function Drawer({ open, title, children, onClose }: { open: boolean; titl
       />
       <aside
         className={clsx(
-          'absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-white p-6 shadow-2xl transition-transform',
+          'absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-app-surface p-6 text-app-text shadow-2xl transition-transform',
           open ? 'translate-x-0' : 'translate-x-full'
         )}
       >
         <div className="mb-6 flex shrink-0 items-center justify-between">
-          <h2 className="text-xl font-bold">{title}</h2>
-          <button type="button" onClick={onClose}>
+          <h2 className="text-xl font-bold text-app-text">{title}</h2>
+          <button type="button" className="text-app-text-muted transition hover:text-app-text" onClick={onClose}>
             Close
           </button>
         </div>

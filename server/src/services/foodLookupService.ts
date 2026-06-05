@@ -63,6 +63,28 @@ export async function lookupFood(userId: string, inputText: string): Promise<Foo
   return { source, items };
 }
 
+export async function lookupFoodFromImage(
+  userId: string,
+  image: { data: string; mimeType: string },
+  inputText = ''
+): Promise<FoodLookupResult> {
+  const estimates = await getAiProvider().lookupFoodFromImage(image, inputText);
+  const items: FoodLookupItem[] = [];
+
+  for (const estimate of estimates) {
+    const lookup = await prisma.aiFoodLookup.create({
+      data: {
+        userId,
+        inputText: inputText.trim() || 'uploaded meal photo',
+        ...estimate
+      }
+    });
+    items.push({ source: 'ai', line: estimate.normalizedFoodName, lookup, estimate });
+  }
+
+  return { source: 'ai', items };
+}
+
 export async function acceptFoodLookup(userId: string, lookupId: string, mealId?: string, type: MealItemType = MealItemType.ACTUAL) {
   const food = await prisma.$transaction(async (tx) => {
     const lookup = await tx.aiFoodLookup.findFirstOrThrow({ where: { id: lookupId, userId } });

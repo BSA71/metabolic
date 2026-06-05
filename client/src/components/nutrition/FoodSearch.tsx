@@ -48,21 +48,21 @@ export function FoodSearch({
   return (
     <div className="relative">
       <input
-        className="w-full rounded-2xl border border-slate-200 p-3"
+        className="w-full rounded-2xl border border-app-border bg-app-surface p-3 text-app-text placeholder:text-app-text-muted"
         placeholder="Search foods by name or alias"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
       />
       {showDropdown && (
         <ul
-          className={`absolute z-[100] max-h-48 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-lg ${
+          className={`absolute z-[100] max-h-48 w-full overflow-y-auto rounded-2xl border border-app-border bg-app-surface shadow-lg ${
             dropUp ? 'bottom-full mb-1' : 'mt-1'
           }`}
         >
-          {loading && <li className="px-4 py-2 text-sm text-slate-500">Searching…</li>}
+          {loading && <li className="px-4 py-2 text-sm text-app-text-muted">Searching…</li>}
           {!loading && error && <li className="px-4 py-2 text-sm text-red-600">{error}</li>}
           {!loading && !error && results.length === 0 && (
-            <li className="px-4 py-2 text-sm text-slate-500">No foods found. Try a shorter name like &quot;chicken&quot; or &quot;rice&quot;.</li>
+            <li className="px-4 py-2 text-sm text-app-text-muted">No foods found. Try a shorter name like &quot;chicken&quot; or &quot;rice&quot;.</li>
           )}
           {!loading &&
             !error &&
@@ -70,7 +70,7 @@ export function FoodSearch({
               <li key={food.id}>
                 <button
                   type="button"
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50"
+                  className="w-full px-4 py-2 text-left text-sm text-app-text hover:bg-app-muted"
                   onClick={() => {
                     onSelect(food);
                     setQuery('');
@@ -79,7 +79,7 @@ export function FoodSearch({
                   }}
                 >
                   <span className="font-medium">{food.name}</span>
-                  <span className="ml-2 text-slate-500">{Math.round(Number(food.calories))} kcal</span>
+                  <span className="ml-2 text-app-text-muted">{Math.round(Number(food.calories))} kcal</span>
                 </button>
               </li>
             ))}

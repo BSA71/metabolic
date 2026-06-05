@@ -16,7 +16,7 @@ import { onboardingRoutes } from './routes/onboardingRoutes.js';
 import { gamificationRoutes } from './routes/gamificationRoutes.js';
 
 async function main() {
-  const app = Fastify({ logger: true });
+  const app = Fastify({ logger: true, bodyLimit: 16 * 1024 * 1024 });
 
   await app.register(cors, {
     origin: env.CLIENT_URL,
