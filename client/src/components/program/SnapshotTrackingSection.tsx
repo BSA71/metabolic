@@ -93,7 +93,7 @@ export function SnapshotTrackingSection({
     <>
       <Card>
         <h2 className="mb-1 text-lg font-bold">Tracking Measurements</h2>
-        <p className="mb-4 text-sm text-slate-500">
+        <p className="mb-4 text-sm text-slate-500 dark:text-app-text-muted">
           Expand a metric to review history, or open the drawer to add or edit entries.
         </p>
 
@@ -104,11 +104,11 @@ export function SnapshotTrackingSection({
 
             if (item.kind === 'photos') {
               return (
-                <div key={key} className="overflow-hidden rounded-2xl border border-slate-200">
+                <div key={key} className="overflow-hidden rounded-2xl border border-slate-200 dark:border-app-border">
                   <div className="flex items-start gap-3 p-4">
                     <button
                       type="button"
-                      className="mt-0.5 rounded-lg p-1 text-slate-500 transition hover:bg-slate-100"
+                      className="mt-0.5 rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 dark:text-app-text-muted dark:hover:bg-app-muted"
                       aria-expanded={expanded}
                       onClick={() => setExpandedKey(expanded ? null : key)}
                     >
@@ -117,13 +117,13 @@ export function SnapshotTrackingSection({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <h3 className="font-semibold text-slate-900">{item.label}</h3>
+                          <h3 className="font-semibold text-slate-900 dark:text-app-text">{item.label}</h3>
                           <p className="text-xs font-medium uppercase tracking-wide text-brand-green">{item.frequency}</p>
-                          <p className="mt-1 text-sm text-slate-500">{item.guidance}</p>
+                          <p className="mt-1 text-sm text-slate-500 dark:text-app-text-muted">{item.guidance}</p>
                         </div>
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-app-border dark:text-app-text dark:hover:bg-app-muted"
                           onClick={() => setEditingPhotos(null)}
                         >
                           <Plus size={14} />
@@ -132,18 +132,18 @@ export function SnapshotTrackingSection({
                       </div>
 
                       {expanded && (
-                        <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+                        <div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-app-border">
                           {progressPhotos.length === 0 ? (
-                            <p className="text-sm text-slate-500">No progress photo sets saved yet.</p>
+                            <p className="text-sm text-slate-500 dark:text-app-text-muted">No progress photo sets saved yet.</p>
                           ) : (
                             progressPhotos.map((photoSet) => (
                               <div
                                 key={photoSet.id}
-                                className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3"
+                                className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 dark:bg-app-muted"
                               >
                                 <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-slate-800">{formatDate(photoSet.date)}</p>
-                                  <p className="text-sm text-slate-500">
+                                  <p className="font-medium text-slate-800 dark:text-app-text">{formatDate(photoSet.date)}</p>
+                                  <p className="text-sm text-slate-500 dark:text-app-text-muted">
                                     {[photoSet.frontUrl && 'Front', photoSet.sideUrl && 'Side', photoSet.backUrl && 'Back']
                                       .filter(Boolean)
                                       .join(' · ') || 'No photos yet'}
@@ -164,7 +164,7 @@ export function SnapshotTrackingSection({
                                 </div>
                                 <button
                                   type="button"
-                                  className="rounded-lg p-2 text-slate-500 transition hover:bg-white hover:text-slate-900"
+                                  className="rounded-lg p-2 text-slate-500 transition hover:bg-white hover:text-slate-900 dark:text-app-text-muted dark:hover:bg-app-surface dark:hover:text-app-text"
                                   aria-label="Edit progress photos"
                                   onClick={() => setEditingPhotos(photoSet)}
                                 >
@@ -184,11 +184,11 @@ export function SnapshotTrackingSection({
             const history = histories[item.metricType];
 
             return (
-              <div key={key} className="overflow-hidden rounded-2xl border border-slate-200">
+              <div key={key} className="overflow-hidden rounded-2xl border border-slate-200 dark:border-app-border">
                 <div className="flex items-start gap-3 p-4">
                   <button
                     type="button"
-                    className="mt-0.5 rounded-lg p-1 text-slate-500 transition hover:bg-slate-100"
+                    className="mt-0.5 rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 dark:text-app-text-muted dark:hover:bg-app-muted"
                     aria-expanded={expanded}
                     onClick={() => setExpandedKey(expanded ? null : key)}
                   >
@@ -197,13 +197,13 @@ export function SnapshotTrackingSection({
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <h3 className="font-semibold text-slate-900">{item.label}</h3>
+                        <h3 className="font-semibold text-slate-900 dark:text-app-text">{item.label}</h3>
                         <p className="text-xs font-medium uppercase tracking-wide text-brand-green">{item.frequency}</p>
-                        <p className="mt-1 text-sm text-slate-500">{item.guidance}</p>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-app-text-muted">{item.guidance}</p>
                       </div>
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-app-border dark:text-app-text dark:hover:bg-app-muted"
                         onClick={() =>
                           setEditingMeasurement({
                             metricType: item.metricType,
@@ -218,12 +218,12 @@ export function SnapshotTrackingSection({
                     </div>
 
                     {expanded && (
-                      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100">
+                      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100 dark:border-app-border">
                         {history.length === 0 ? (
-                          <p className="p-4 text-sm text-slate-500">No entries logged yet.</p>
+                          <p className="p-4 text-sm text-slate-500 dark:text-app-text-muted">No entries logged yet.</p>
                         ) : (
                           <table className="min-w-full text-left">
-                            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-app-muted dark:text-app-text-muted">
                               <tr>
                                 <th className="px-3 py-2.5">Date</th>
                                 <th className="px-3 py-2.5">Value</th>
@@ -233,16 +233,16 @@ export function SnapshotTrackingSection({
                             </thead>
                             <tbody>
                               {[...history].reverse().map((entry) => (
-                                <tr key={`${entry.snapshot.id}:${item.metricType}`} className="border-t border-slate-100">
-                                  <td className="px-3 py-3 text-sm text-slate-700">{formatDate(entry.snapshot.date)}</td>
-                                  <td className="px-3 py-3 text-sm font-medium text-slate-800">
+                                <tr key={`${entry.snapshot.id}:${item.metricType}`} className="border-t border-slate-100 dark:border-app-border">
+                                  <td className="px-3 py-3 text-sm text-slate-700 dark:text-app-text">{formatDate(entry.snapshot.date)}</td>
+                                  <td className="px-3 py-3 text-sm font-medium text-slate-800 dark:text-app-text">
                                     {entry.value.toFixed(2)} {entry.unit}
                                   </td>
-                                  <td className="px-3 py-3 text-sm text-slate-600">{entry.change}</td>
+                                  <td className="px-3 py-3 text-sm text-slate-600 dark:text-app-text-muted">{entry.change}</td>
                                   <td className="px-3 py-3 text-right">
                                     <button
                                       type="button"
-                                      className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                                      className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-app-text-muted dark:hover:bg-app-muted dark:hover:text-app-text"
                                       aria-label={`Edit ${item.label.toLowerCase()} entry`}
                                       onClick={() =>
                                         setEditingMeasurement({

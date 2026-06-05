@@ -74,10 +74,15 @@ export function EditMealPlanDrawer({
   const hasItems = items.length > 0;
   const [manualOpen, setManualOpen] = useState(false);
   const [manual, setManual] = useState({ calories: 0, protein: 0, carbs: 0, fat: 0 });
+  const [plannedTime, setPlannedTime] = useState('');
+  const [savingTime, setSavingTime] = useState(false);
+  const [timeError, setTimeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!meal) return;
     setManual(MODE_CONFIG[mode].totals(meal));
+    setPlannedTime(meal.plannedTime ?? '');
+    setTimeError(null);
     setManualOpen(false);
   }, [meal, mode]);
 
@@ -130,9 +135,51 @@ export function EditMealPlanDrawer({
     onClose();
   }
 
+  async function savePlannedTime() {
+    if (!meal) return;
+    setSavingTime(true);
+    setTimeError(null);
+    try {
+      await api(`/api/meals/${meal.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ plannedTime: plannedTime || null })
+      });
+      onSaved();
+    } catch (error) {
+      setTimeError(error instanceof Error ? error.message : 'Could not save meal time.');
+    } finally {
+      setSavingTime(false);
+    }
+  }
+
   return (
     <Drawer open={open} title={meal ? `${config.title} — ${meal.name}` : config.title} onClose={onClose}>
       <div className="space-y-6">
+        <div className="rounded-2xl border border-app-border bg-app-muted p-4">
+          <label className="text-sm font-semibold text-app-text" htmlFor="meal-planned-time">
+            Meal time
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              id="meal-planned-time"
+              type="time"
+              className="rounded-xl border border-app-border bg-app-surface px-3 py-2 text-app-text"
+              value={plannedTime}
+              onChange={(event) => setPlannedTime(event.target.value)}
+              disabled={!meal || savingTime}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void savePlannedTime()}
+              disabled={!meal || savingTime || plannedTime === (meal.plannedTime ?? '')}
+            >
+              {savingTime ? 'Saving...' : 'Save time'}
+            </Button>
+          </div>
+          {timeError && <p className="mt-2 text-sm text-red-600">{timeError}</p>}
+        </div>
+
         <div>
           <p className="mb-2 text-sm font-semibold text-app-text">{config.foodsLabel}</p>
           {items.length === 0 ? (

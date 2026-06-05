@@ -36,6 +36,18 @@ function MealActionButton({
   );
 }
 
+function formatPlannedTime(plannedTime?: string | null) {
+  if (!plannedTime) return null;
+  const match = plannedTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return plannedTime;
+
+  const [, hour, minute] = match;
+  return new Date(2000, 0, 1, Number(hour), Number(minute))
+    .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    .replace(' AM', 'am')
+    .replace(' PM', 'pm');
+}
+
 export function MealCard({
   meal,
   selectedDate,
@@ -55,6 +67,7 @@ export function MealCard({
   const [pendingLogged, setPendingLogged] = useState<Record<string, boolean>>({});
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const plannedTime = formatPlannedTime(meal.plannedTime);
 
   function isPlannedItemLogged(plannedItem: MealItem) {
     return actualItems.some(
@@ -136,7 +149,7 @@ export function MealCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm text-app-text-muted">Meal {meal.mealNumber}</p>
-          <h3 className="text-lg font-bold">{meal.name}</h3>
+          <h3 className="text-lg font-bold">{plannedTime ? `${meal.name} - ${plannedTime}` : meal.name}</h3>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <MealActionButton label="Edit plan" onClick={() => onEditPlan(meal.id)}>

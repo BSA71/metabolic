@@ -74,7 +74,7 @@ function buildRows(snapshots: ProgramMetricSnapshot[]): SnapshotRow[] {
 }
 
 const headerCellClass = 'px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide';
-const bodyCellClass = 'px-3 py-3 text-sm text-slate-700';
+const bodyCellClass = 'px-3 py-3 text-sm text-slate-700 dark:text-app-text';
 
 export function ProgramMetricSnapshotHistory({ programId, snapshots, selectedId, onSelect, onUpdated }: Props) {
   const [editingSnapshot, setEditingSnapshot] = useState<ProgramMetricSnapshot | null>(null);
@@ -85,7 +85,7 @@ export function ProgramMetricSnapshotHistory({ programId, snapshots, selectedId,
     return (
       <Card>
         <h2 className="mb-1 text-lg font-bold">Saved Snapshots</h2>
-        <p className="text-sm text-slate-500">Save today&apos;s current values to start tracking sessions over time.</p>
+        <p className="text-sm text-slate-500 dark:text-app-text-muted">Save today&apos;s current values to start tracking sessions over time.</p>
       </Card>
     );
   }
@@ -94,10 +94,10 @@ export function ProgramMetricSnapshotHistory({ programId, snapshots, selectedId,
     <>
       <Card>
         <h2 className="mb-1 text-lg font-bold">Saved Snapshots</h2>
-        <p className="mb-4 text-sm text-slate-500">Select a session to preview it in the chart, or edit with the pencil.</p>
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <p className="mb-4 text-sm text-slate-500 dark:text-app-text-muted">Select a session to preview it in the chart, or edit with the pencil.</p>
+        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-app-border">
           <table className="min-w-full text-left">
-            <thead className="bg-slate-800 text-white">
+            <thead className="bg-slate-800 text-white dark:bg-app-muted dark:text-app-text">
               <tr>
                 <th className={headerCellClass}>Session</th>
                 <th className={headerCellClass}>Date</th>
@@ -124,8 +124,8 @@ export function ProgramMetricSnapshotHistory({ programId, snapshots, selectedId,
                         onSelect(selected ? null : row.snapshot.id);
                       }
                     }}
-                    className={`cursor-pointer border-t border-slate-100 transition ${
-                      selected ? 'bg-blue-50 ring-1 ring-inset ring-blue-200' : 'hover:bg-slate-50'
+                    className={`cursor-pointer border-t border-slate-100 transition dark:border-app-border ${
+                      selected ? 'bg-blue-50 ring-1 ring-inset ring-blue-200 dark:bg-brand-green/10 dark:ring-brand-green/30' : 'hover:bg-slate-50 dark:hover:bg-app-muted'
                     }`}
                   >
                     <td className={`${bodyCellClass} font-semibold`}>{row.session}</td>
@@ -140,7 +140,7 @@ export function ProgramMetricSnapshotHistory({ programId, snapshots, selectedId,
                       <button
                         type="button"
                         aria-label={`Edit session ${row.session}`}
-                        className="rounded-lg p-2 text-slate-500 transition hover:bg-white hover:text-slate-900"
+                        className="rounded-lg p-2 text-slate-500 transition hover:bg-white hover:text-slate-900 dark:text-app-text-muted dark:hover:bg-app-muted dark:hover:text-app-text"
                         onClick={(event) => {
                           event.stopPropagation();
                           setEditingSnapshot(row.snapshot);
