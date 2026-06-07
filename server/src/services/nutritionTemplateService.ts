@@ -1,5 +1,6 @@
-import { MealItemType, ProgramStatus, Visibility, type Prisma } from '@prisma/client';
+import { MealItemType, ProgramStatus, Role, Visibility, type Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { isAdmin } from '../auth/requireRole.js';
 import { parseDateParam } from '../utils/dates.js';
 import { n } from '../utils/numbers.js';
 import { ensureDailyLogByUserId } from './dailyLogService.js';
@@ -129,11 +130,42 @@ export async function listTemplatesForAdmin() {
   return templates.map(serializeTemplateSummary);
 }
 
+export async function listTemplatesForActor(actor: { id: string; role: Role }) {
+  if (isAdmin(actor)) return listTemplatesForAdmin();
+  const templates = await prisma.nutritionPlanTemplate.findMany({
+    where: { OR: [{ visibility: Visibility.GLOBAL }, { createdById: actor.id }] },
+    include: { meals: { include: { items: true } } },
+    orderBy: { updatedAt: 'desc' }
+  });
+  return templates.map(serializeTemplateSummary);
+}
+
+async function ensureTemplateManageable(templateId: string, actor?: { id: string; role: Role }) {
+  if (!actor || isAdmin(actor)) return;
+  const template = await prisma.nutritionPlanTemplate.findUnique({ where: { id: templateId } });
+  if (!template || template.createdById !== actor.id) throw new Error('Template not found');
+}
+
+export async function ensureNutritionTemplateManageable(templateId: string, actor: { id: string; role: Role }) {
+  return ensureTemplateManageable(templateId, actor);
+}
+
 export async function getTemplate(id: string) {
   const template = await prisma.nutritionPlanTemplate.findUniqueOrThrow({
     where: { id },
     include: templateInclude
   });
+  return serializeTemplate(template);
+}
+
+export async function getTemplateForActor(id: string, actor: { id: string; role: Role }) {
+  const template = await prisma.nutritionPlanTemplate.findUniqueOrThrow({
+    where: { id },
+    include: templateInclude
+  });
+  if (!isAdmin(actor) && template.visibility !== Visibility.GLOBAL && template.createdById !== actor.id) {
+    throw new Error('Template not found');
+  }
   return serializeTemplate(template);
 }
 
@@ -185,8 +217,10 @@ export async function updateTemplate(
     proteinTarget?: number;
     carbTarget?: number;
     fatTarget?: number;
-  }
+  },
+  actor?: { id: string; role: Role }
 ) {
+  await ensureTemplateManageable(id, actor);
   await prisma.nutritionPlanTemplate.update({
     where: { id },
     data: {
@@ -202,7 +236,8 @@ export async function updateTemplate(
   return getTemplate(id);
 }
 
-export async function deleteTemplate(id: string) {
+export async function deleteTemplate(id: string, actor?: { id: string; role: Role }) {
+  await ensureTemplateManageable(id, actor);
   const inUse = await prisma.program.count({ where: { defaultNutritionTemplateId: id } });
   if (inUse > 0) {
     throw new Error('Cannot delete a template that is set as a program default');
@@ -314,14 +349,16 @@ export async function applyTemplateToDailyLog(
   userId: string,
   date: string,
   templateId: string,
-  options?: { setAsDefault?: boolean }
+  options?: { setAsDefault?: boolean; actorId?: string }
 ) {
   const log = await ensureDailyLogByUserId(userId, date);
   if (!log) throw new Error('No active program found');
 
   const template = await prisma.nutritionPlanTemplate.findUnique({ where: { id: templateId } });
   if (!template) throw new Error('Template not found');
-  if (template.visibility !== Visibility.GLOBAL) throw new Error('Template not available');
+  if (template.visibility !== Visibility.GLOBAL && template.createdById !== options?.actorId) {
+    throw new Error('Template not available');
+  }
 
   await prisma.$transaction(async (tx) => {
     await applyTemplateMealsToLog(tx, templateId, log.id, userId);
@@ -366,7 +403,8 @@ export async function getProgramDefaultTemplate(userId: string) {
   });
 }
 
-export async function createTemplateMeal(templateId: string, data: { name: string; mealNumber: number; plannedTime?: string | null }) {
+export async function createTemplateMeal(templateId: string, data: { name: string; mealNumber: number; plannedTime?: string | null }, actor?: { id: string; role: Role }) {
+  await ensureTemplateManageable(templateId, actor);
   await prisma.nutritionTemplateMeal.create({
     data: {
       templateId,
@@ -378,7 +416,9 @@ export async function createTemplateMeal(templateId: string, data: { name: strin
   return getTemplate(templateId);
 }
 
-export async function updateTemplateMeal(mealId: string, data: { name?: string; mealNumber?: number; plannedTime?: string | null }) {
+export async function updateTemplateMeal(mealId: string, data: { name?: string; mealNumber?: number; plannedTime?: string | null }, actor?: { id: string; role: Role }) {
+  const existing = await prisma.nutritionTemplateMeal.findUniqueOrThrow({ where: { id: mealId } });
+  await ensureTemplateManageable(existing.templateId, actor);
   const meal = await prisma.nutritionTemplateMeal.update({
     where: { id: mealId },
     data: {
@@ -390,12 +430,16 @@ export async function updateTemplateMeal(mealId: string, data: { name?: string; 
   return getTemplate(meal.templateId);
 }
 
-export async function deleteTemplateMeal(mealId: string) {
+export async function deleteTemplateMeal(mealId: string, actor?: { id: string; role: Role }) {
+  const existing = await prisma.nutritionTemplateMeal.findUniqueOrThrow({ where: { id: mealId } });
+  await ensureTemplateManageable(existing.templateId, actor);
   const meal = await prisma.nutritionTemplateMeal.delete({ where: { id: mealId } });
   return getTemplate(meal.templateId);
 }
 
-export async function addTemplateMealItem(mealId: string, data: Record<string, unknown>) {
+export async function addTemplateMealItem(mealId: string, data: Record<string, unknown>, actor?: { id: string; role: Role }) {
+  const meal = await prisma.nutritionTemplateMeal.findUniqueOrThrow({ where: { id: mealId } });
+  await ensureTemplateManageable(meal.templateId, actor);
   await prisma.nutritionTemplateMealItem.create({
     data: {
       mealId,
@@ -409,15 +453,15 @@ export async function addTemplateMealItem(mealId: string, data: Record<string, u
       fat: Number(data.fat ?? 0)
     }
   });
-  const meal = await prisma.nutritionTemplateMeal.findUniqueOrThrow({ where: { id: mealId } });
   return getTemplate(meal.templateId);
 }
 
-export async function updateTemplateMealItem(itemId: string, data: Record<string, unknown>) {
+export async function updateTemplateMealItem(itemId: string, data: Record<string, unknown>, actor?: { id: string; role: Role }) {
   const existing = await prisma.nutritionTemplateMealItem.findUniqueOrThrow({
     where: { id: itemId },
     include: { meal: true }
   });
+  await ensureTemplateManageable(existing.meal.templateId, actor);
   await prisma.nutritionTemplateMealItem.update({
     where: { id: itemId },
     data: {
@@ -433,9 +477,10 @@ export async function updateTemplateMealItem(itemId: string, data: Record<string
   return getTemplate(existing.meal.templateId);
 }
 
-export async function deleteTemplateMealItem(itemId: string) {
+export async function deleteTemplateMealItem(itemId: string, actor?: { id: string; role: Role }) {
   const item = await prisma.nutritionTemplateMealItem.findUniqueOrThrow({ where: { id: itemId } });
   const meal = await prisma.nutritionTemplateMeal.findUniqueOrThrow({ where: { id: item.mealId } });
+  await ensureTemplateManageable(meal.templateId, actor);
   await prisma.nutritionTemplateMealItem.delete({ where: { id: itemId } });
   return getTemplate(meal.templateId);
 }

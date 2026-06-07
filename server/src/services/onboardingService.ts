@@ -1,8 +1,10 @@
-import { ProgramStatus } from '@prisma/client';
+import { ProgramStatus, Role, Visibility } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { startOfUtcDay } from '../utils/dates.js';
 import { buildProgramMetrics } from '../utils/programMetrics.js';
 import { ensureTodayDailyLog } from './dailyLogService.js';
+import { applyTemplateMealsToLog } from './nutritionTemplateApply.js';
+import { applyTemplateExercisesToDate } from './exerciseTemplateApply.js';
 
 const DEFAULT_EXERCISES = [
   { name: 'Morning walk', category: 'Cardio', defaultDurationMinutes: 30 },
@@ -69,7 +71,38 @@ type SetupInput = {
   goalBodyFat?: number;
   calorieTarget?: number;
   proteinTarget?: number;
+  coachCode?: string;
+  wantsCoach?: boolean;
 };
+
+function normalizeCoachCode(value?: string) {
+  const normalized = value?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return normalized || null;
+}
+
+async function findCoachByCode(code: string | null) {
+  if (!code) return null;
+  return prisma.user.findFirst({
+    where: { role: Role.COACH, coachCode: { equals: code, mode: 'insensitive' } },
+    select: { id: true, defaultNutritionTemplateId: true, defaultExerciseTemplateId: true }
+  });
+}
+
+async function findGlobalNutritionTemplate() {
+  return prisma.nutritionPlanTemplate.findFirst({
+    where: { visibility: Visibility.GLOBAL },
+    orderBy: { updatedAt: 'desc' },
+    select: { id: true, calorieTarget: true, proteinTarget: true }
+  });
+}
+
+async function findGlobalExerciseTemplate() {
+  return prisma.exerciseTemplate.findFirst({
+    where: { visibility: Visibility.GLOBAL },
+    orderBy: { updatedAt: 'desc' },
+    select: { id: true }
+  });
+}
 
 export async function setupFirstProgram(userId: string, input: SetupInput) {
   const needsSetup = await userNeedsSetup(userId);
@@ -77,21 +110,43 @@ export async function setupFirstProgram(userId: string, input: SetupInput) {
     throw new Error('You already have an active program.');
   }
 
-  const template = await prisma.programTemplate.findFirst({ orderBy: { createdAt: 'asc' } });
-  const calories = input.calorieTarget ?? Number(template?.defaultCalories ?? 2200);
-  const protein = input.proteinTarget ?? Number(template?.defaultProtein ?? 190);
+  const [template, coach, globalNutritionTemplate, globalExerciseTemplate] = await Promise.all([
+    prisma.programTemplate.findFirst({ orderBy: { createdAt: 'asc' } }),
+    findCoachByCode(normalizeCoachCode(input.coachCode)),
+    findGlobalNutritionTemplate(),
+    findGlobalExerciseTemplate()
+  ]);
+  const defaultNutritionTemplateId = coach?.defaultNutritionTemplateId ?? globalNutritionTemplate?.id ?? null;
+  const defaultExerciseTemplateId = coach?.defaultExerciseTemplateId ?? globalExerciseTemplate?.id ?? null;
+  const calories = input.calorieTarget ?? Number(globalNutritionTemplate?.calorieTarget ?? template?.defaultCalories ?? 2200);
+  const protein = input.proteinTarget ?? Number(globalNutritionTemplate?.proteinTarget ?? template?.defaultProtein ?? 190);
   const programName = input.programName?.trim() || template?.name || 'My Metabolic Program';
   const today = startOfUtcDay();
   const targetEndDate = new Date(today.getTime() + 16 * 7 * 86400000);
 
   const program = await prisma.$transaction(async (tx) => {
+    if (coach) {
+      await tx.coachAssignment.deleteMany({ where: { userId } });
+      await tx.coachAssignment.create({ data: { coachId: coach.id, userId } });
+    }
+
+    if (input.wantsCoach || input.coachCode?.trim()) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { coachRequestedAt: coach ? null : new Date() }
+      });
+    }
+
     const created = await tx.program.create({
       data: {
         userId,
+        coachId: coach?.id ?? null,
         name: programName,
         status: ProgramStatus.ACTIVE,
         startDate: today,
-        targetEndDate
+        targetEndDate,
+        defaultNutritionTemplateId,
+        defaultExerciseTemplateId
       }
     });
 
@@ -107,8 +162,19 @@ export async function setupFirstProgram(userId: string, input: SetupInput) {
     include: { metrics: true }
   });
 
-  await ensureTodayDailyLog(userId, programWithMetrics);
-  await seedDefaultExercises(userId, program.id, today);
+  const dailyLog = await ensureTodayDailyLog(userId, programWithMetrics);
+  if (dailyLog && defaultNutritionTemplateId) {
+    await prisma.$transaction(async (tx) => {
+      await applyTemplateMealsToLog(tx, defaultNutritionTemplateId, dailyLog.id, userId);
+    });
+  }
+  if (defaultExerciseTemplateId) {
+    await prisma.$transaction(async (tx) => {
+      await applyTemplateExercisesToDate(tx, defaultExerciseTemplateId, program.id, userId, today.toISOString().slice(0, 10));
+    });
+  } else {
+    await seedDefaultExercises(userId, program.id, today);
+  }
 
   return programWithMetrics;
 }

@@ -1,6 +1,7 @@
 import { ProgramStatus, Role } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { runProgressionEvaluation } from '../gamification/progressionEngine.js';
+import { canAccessUser, isAdmin, isCoach } from '../auth/requireRole.js';
 import { parseDateParam } from '../utils/dates.js';
 import { metricUpdatesForLegacyGoals, missingProgramMetrics } from '../utils/programMetrics.js';
 
@@ -62,7 +63,7 @@ async function ensureCompleteProgramMetrics(programId: string) {
 }
 
 export async function listPrograms(user: { id: string; role: Role }) {
-  const where = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' ? {} : { userId: user.id };
+  const where = isAdmin(user) ? {} : isCoach(user) ? { coachId: user.id } : { userId: user.id };
   const programs = await prisma.program.findMany({ where, include: { metrics: true, user: true }, orderBy: { createdAt: 'desc' } });
 
   return Promise.all(
@@ -91,7 +92,7 @@ export async function listPrograms(user: { id: string; role: Role }) {
 export async function getProgram(user: { id: string; role: Role }, id: string) {
   const program = await prisma.program.findUnique({ where: { id }, include: { metrics: true, user: true } });
   if (!program) return null;
-  if (!(user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || program.userId === user.id)) return null;
+  if (!(await canAccessUser(user, program.userId)) && program.coachId !== user.id) return null;
   if (hasCompleteMetrics(program.metrics)) {
     const goalUpdates = metricUpdatesForLegacyGoals(program.metrics);
     if (!goalUpdates.length) return program;

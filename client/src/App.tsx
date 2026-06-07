@@ -16,6 +16,7 @@ import { AdminNutritionTemplatesPage } from './pages/AdminNutritionTemplatesPage
 import { AdminNutritionTemplateEditorPage } from './pages/AdminNutritionTemplateEditorPage';
 import { AdminExerciseTemplatesPage } from './pages/AdminExerciseTemplatesPage';
 import { AdminExerciseTemplateEditorPage } from './pages/AdminExerciseTemplateEditorPage';
+import { CoachPage } from './pages/CoachPage';
 import { LoginPage } from './pages/LoginPage';
 import { FirstTimeSetupPage } from './pages/FirstTimeSetupPage';
 import { CampaignPolicyPage } from './pages/CampaignPolicyPage';
@@ -24,7 +25,7 @@ import { GamificationPage } from './pages/GamificationPage';
 import { JourneyPage } from './pages/JourneyPage';
 import { BadgesPage } from './pages/BadgesPage';
 import { BaselineSnapshotPage } from './pages/BaselineSnapshotPage';
-import { isAdminRole } from './utils/roles';
+import { isAdminRole, isCoachRole } from './utils/roles';
 
 function LoadingScreen() {
   return (
@@ -83,6 +84,18 @@ function AdminRoute({ appUser, children }: { appUser: AppUser | null; children?:
     );
   }
   return children ?? <AdminPage />;
+}
+
+function CoachRoute({ appUser }: { appUser: AppUser | null }) {
+  if (!isCoachRole(appUser?.role)) {
+    return (
+      <div className="rounded-2xl border border-brand-gold/40 bg-brand-gold/10 p-6 text-brand-navy dark:text-brand-off-white">
+        <h1 className="text-xl font-bold">Coach access required</h1>
+        <p className="mt-2 text-sm text-app-text-muted">Your account does not have permission to view coach tools.</p>
+      </div>
+    );
+  }
+  return <CoachPage />;
 }
 
 export default function App() {
@@ -170,6 +183,7 @@ export default function App() {
           <Route path="level-up/badges" element={<BadgesPage />} />
           <Route path="level-up/baseline" element={<BaselineSnapshotPage />} />
           <Route path="assistant" element={<AssistantPage />} />
+          <Route path="coach" element={<CoachRoute appUser={appUser} />} />
           <Route path="admin" element={<AdminRoute appUser={appUser} />} />
           <Route path="admin/nutrition-templates" element={<AdminRoute appUser={appUser}><AdminNutritionTemplatesPage /></AdminRoute>} />
           <Route path="admin/nutrition-templates/:id" element={<AdminRoute appUser={appUser}><AdminNutritionTemplateEditorPage /></AdminRoute>} />

@@ -4,7 +4,21 @@ import { z } from 'zod';
 import { requireAuth } from '../auth/requireAuth.js';
 import { requireRole } from '../auth/requireRole.js';
 import { prisma } from '../db/prisma.js';
-import { listAdminFoods, listAdminFoodReviewQueue, listAdminUsers, serializeAdminFood, serializeReviewFood, approveAdminFood, rejectAdminFood, updateAdminFood, updateAdminUser } from '../services/adminService.js';
+import {
+  assignPrimaryCoach,
+  listAdminFoods,
+  listAdminFoodReviewQueue,
+  listAdminUsers,
+  listCoaches,
+  serializeAdminFood,
+  serializeAdminUser,
+  serializeReviewFood,
+  approveAdminFood,
+  rejectAdminFood,
+  unassignPrimaryCoach,
+  updateAdminFood,
+  updateAdminUser
+} from '../services/adminService.js';
 import {
   addTemplateMealItem,
   cloneDailyLogToTemplate,
@@ -35,6 +49,7 @@ import {
 } from '../services/exerciseTemplateService.js';
 
 const adminOnly = [requireAuth, requireRole(['SUPER_ADMIN', 'ADMIN'])];
+const superAdminOnly = [requireAuth, requireRole(['SUPER_ADMIN'])];
 
 const userUpdateBody = z
   .object({
@@ -46,6 +61,10 @@ const userUpdateBody = z
     status: z.nativeEnum(UserStatus).optional()
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+
+const coachAssignmentBody = z.object({
+  coachId: z.string().trim().min(1)
+});
 
 const foodUpdateBody = z
   .object({
@@ -181,7 +200,12 @@ const exerciseTemplateReorderBody = z.object({
 });
 
 export async function adminRoutes(app: FastifyInstance) {
-  app.get('/api/admin/users', { preHandler: adminOnly }, async () => listAdminUsers());
+  app.get('/api/admin/users', { preHandler: adminOnly }, async () => {
+    const users = await listAdminUsers();
+    return users.map(serializeAdminUser);
+  });
+
+  app.get('/api/admin/coaches', { preHandler: superAdminOnly }, async () => listCoaches());
 
   app.post('/api/admin/users', { preHandler: adminOnly }, async (request) => prisma.user.create({ data: request.body as any }));
 
@@ -193,10 +217,38 @@ export async function adminRoutes(app: FastifyInstance) {
     }
 
     try {
-      return await updateAdminUser(id, parsed.data);
+      const user = await updateAdminUser(id, parsed.data);
+      return serializeAdminUser(user);
     } catch (error) {
       request.log.error({ err: error }, 'Failed to update user');
       return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update user' });
+    }
+  });
+
+  app.put('/api/admin/users/:id/coach-assignment', { preHandler: superAdminOnly }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = coachAssignmentBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid coach assignment' });
+    }
+
+    try {
+      const user = await assignPrimaryCoach(id, parsed.data.coachId);
+      return serializeAdminUser(user);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to assign coach');
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to assign coach' });
+    }
+  });
+
+  app.delete('/api/admin/users/:id/coach-assignment', { preHandler: superAdminOnly }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const user = await unassignPrimaryCoach(id);
+      return serializeAdminUser(user);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to unassign coach');
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to unassign coach' });
     }
   });
 

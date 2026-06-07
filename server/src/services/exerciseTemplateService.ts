@@ -1,5 +1,6 @@
-import { ExerciseStatus, ProgramStatus, Visibility, type Prisma } from '@prisma/client';
+import { ExerciseStatus, ProgramStatus, Role, Visibility, type Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { isAdmin } from '../auth/requireRole.js';
 import { parseDateParam } from '../utils/dates.js';
 import { n } from '../utils/numbers.js';
 import { getActiveProgram } from './exerciseService.js';
@@ -102,11 +103,38 @@ export async function listTemplatesForAdmin() {
   return templates.map(serializeTemplateSummary);
 }
 
+export async function listTemplatesForActor(actor: { id: string; role: Role }) {
+  if (isAdmin(actor)) return listTemplatesForAdmin();
+  const templates = await prisma.exerciseTemplate.findMany({
+    where: { OR: [{ visibility: Visibility.GLOBAL }, { createdById: actor.id }] },
+    include: { items: true },
+    orderBy: { updatedAt: 'desc' }
+  });
+  return templates.map(serializeTemplateSummary);
+}
+
+async function ensureTemplateManageable(templateId: string, actor?: { id: string; role: Role }) {
+  if (!actor || isAdmin(actor)) return;
+  const template = await prisma.exerciseTemplate.findUnique({ where: { id: templateId } });
+  if (!template || template.createdById !== actor.id) throw new Error('Template not found');
+}
+
 export async function getTemplate(id: string) {
   const template = await prisma.exerciseTemplate.findUniqueOrThrow({
     where: { id },
     include: templateInclude
   });
+  return serializeTemplate(template);
+}
+
+export async function getTemplateForActor(id: string, actor: { id: string; role: Role }) {
+  const template = await prisma.exerciseTemplate.findUniqueOrThrow({
+    where: { id },
+    include: templateInclude
+  });
+  if (!isAdmin(actor) && template.visibility !== Visibility.GLOBAL && template.createdById !== actor.id) {
+    throw new Error('Template not found');
+  }
   return serializeTemplate(template);
 }
 
@@ -133,8 +161,10 @@ export async function updateTemplate(
     name?: string;
     description?: string | null;
     visibility?: Visibility;
-  }
+  },
+  actor?: { id: string; role: Role }
 ) {
+  await ensureTemplateManageable(id, actor);
   await prisma.exerciseTemplate.update({
     where: { id },
     data: {
@@ -146,7 +176,8 @@ export async function updateTemplate(
   return getTemplate(id);
 }
 
-export async function deleteTemplate(id: string) {
+export async function deleteTemplate(id: string, actor?: { id: string; role: Role }) {
+  await ensureTemplateManageable(id, actor);
   const inUse = await prisma.program.count({ where: { defaultExerciseTemplateId: id } });
   if (inUse > 0) {
     throw new Error('Cannot delete a template that is set as a program default');
@@ -229,7 +260,7 @@ export async function applyTemplateToDate(
   userId: string,
   date: string,
   templateId: string,
-  options?: { setAsDefault?: boolean }
+  options?: { setAsDefault?: boolean; actorId?: string }
 ) {
   const program = await getActiveProgram(userId);
   if (!program) throw new Error('No active program found');
@@ -239,7 +270,9 @@ export async function applyTemplateToDate(
 
   const template = await prisma.exerciseTemplate.findUnique({ where: { id: templateId } });
   if (!template) throw new Error('Template not found');
-  if (template.visibility !== Visibility.GLOBAL) throw new Error('Template not available');
+  if (template.visibility !== Visibility.GLOBAL && template.createdById !== options?.actorId) {
+    throw new Error('Template not available');
+  }
 
   await prisma.$transaction(async (tx) => {
     await applyTemplateExercisesToDate(tx, templateId, program.id, userId, date);
@@ -285,7 +318,8 @@ async function nextSortOrder(templateId: string) {
   return (maxOrder._max.sortOrder ?? -1) + 1;
 }
 
-export async function addTemplateItem(templateId: string, data: Record<string, unknown>) {
+export async function addTemplateItem(templateId: string, data: Record<string, unknown>, actor?: { id: string; role: Role }) {
+  await ensureTemplateManageable(templateId, actor);
   const exercise = await prisma.exercise.findUniqueOrThrow({ where: { id: String(data.exerciseId) } });
   await prisma.exerciseTemplateItem.create({
     data: {
@@ -308,8 +342,9 @@ export async function addTemplateItem(templateId: string, data: Record<string, u
   return getTemplate(templateId);
 }
 
-export async function updateTemplateItem(itemId: string, data: Record<string, unknown>) {
+export async function updateTemplateItem(itemId: string, data: Record<string, unknown>, actor?: { id: string; role: Role }) {
   const existing = await prisma.exerciseTemplateItem.findUniqueOrThrow({ where: { id: itemId } });
+  await ensureTemplateManageable(existing.templateId, actor);
   await prisma.exerciseTemplateItem.update({
     where: { id: itemId },
     data: {
@@ -329,13 +364,15 @@ export async function updateTemplateItem(itemId: string, data: Record<string, un
   return getTemplate(existing.templateId);
 }
 
-export async function deleteTemplateItem(itemId: string) {
+export async function deleteTemplateItem(itemId: string, actor?: { id: string; role: Role }) {
   const item = await prisma.exerciseTemplateItem.findUniqueOrThrow({ where: { id: itemId } });
+  await ensureTemplateManageable(item.templateId, actor);
   await prisma.exerciseTemplateItem.delete({ where: { id: itemId } });
   return getTemplate(item.templateId);
 }
 
-export async function reorderTemplateItems(templateId: string, orderedIds: string[]) {
+export async function reorderTemplateItems(templateId: string, orderedIds: string[], actor?: { id: string; role: Role }) {
+  await ensureTemplateManageable(templateId, actor);
   const items = await prisma.exerciseTemplateItem.findMany({
     where: { templateId },
     select: { id: true },
