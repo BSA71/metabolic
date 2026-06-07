@@ -230,14 +230,24 @@ async function handleAiChat(userId: string, phone: string, message: string) {
   return reply;
 }
 
-function buildTwilioMediaHeaders(media: SmsMedia) {
-  const headers: HeadersInit = {};
-  const accountSid = media.accountSid || env.TWILIO_ACCOUNT_SID;
-  if (accountSid && env.TWILIO_AUTH_TOKEN) {
-    const token = Buffer.from(`${accountSid}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');
-    headers.Authorization = `Basic ${token}`;
+function buildTwilioAuthHeaders(accountSid: string) {
+  const token = Buffer.from(`${accountSid}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');
+  return { Authorization: `Basic ${token}` };
+}
+
+function buildTwilioMediaFetchOptions(media: SmsMedia): RequestInit[] {
+  const options: RequestInit[] = [{}];
+  if (!env.TWILIO_AUTH_TOKEN) return options;
+
+  const accountSids = [media.accountSid, env.TWILIO_ACCOUNT_SID]
+    .map((accountSid) => accountSid?.trim())
+    .filter((accountSid): accountSid is string => Boolean(accountSid));
+
+  for (const accountSid of [...new Set(accountSids)]) {
+    options.push({ headers: buildTwilioAuthHeaders(accountSid) });
   }
-  return headers;
+
+  return options;
 }
 
 function twilioMediaDownloadError(response: Response) {
@@ -251,7 +261,13 @@ function twilioMediaDownloadError(response: Response) {
 }
 
 async function downloadSmsImage(media: SmsMedia) {
-  const response = await fetch(media.url, { headers: buildTwilioMediaHeaders(media) });
+  let response: Response | null = null;
+  for (const options of buildTwilioMediaFetchOptions(media)) {
+    response = await fetch(media.url, options);
+    if (response.ok) break;
+    if (![401, 403].includes(response.status)) break;
+  }
+  if (!response) throw new Error('Could not download the WhatsApp photo. Please resend it.');
   if (!response.ok) throw twilioMediaDownloadError(response);
 
   const mimeType = (media.mimeType || response.headers.get('content-type') || '').split(';')[0]!.trim().toLowerCase();
