@@ -32,6 +32,7 @@ const MAX_SMS_IMAGE_BYTES = 10 * 1024 * 1024;
 type SmsMedia = {
   url: string;
   mimeType?: string;
+  accountSid?: string;
 };
 
 function wantsMarkMealComplete(text: string) {
@@ -229,16 +230,29 @@ async function handleAiChat(userId: string, phone: string, message: string) {
   return reply;
 }
 
-async function downloadSmsImage(media: SmsMedia) {
+function buildTwilioMediaHeaders(media: SmsMedia) {
   const headers: HeadersInit = {};
-  if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN) {
-    const token = Buffer.from(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');
+  const accountSid = media.accountSid || env.TWILIO_ACCOUNT_SID;
+  if (accountSid && env.TWILIO_AUTH_TOKEN) {
+    const token = Buffer.from(`${accountSid}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');
     headers.Authorization = `Basic ${token}`;
   }
-  const response = await fetch(media.url, { headers });
-  if (!response.ok) {
-    throw new Error('Could not download the WhatsApp photo.');
+  return headers;
+}
+
+function twilioMediaDownloadError(response: Response) {
+  if (response.status === 401 || response.status === 403) {
+    return new Error('Twilio rejected the WhatsApp photo download. Check TWILIO_AUTH_TOKEN for the webhook account and try again.');
   }
+  if (response.status === 404) {
+    return new Error('Twilio could not find the WhatsApp photo. Please resend the image.');
+  }
+  return new Error('Could not download the WhatsApp photo. Please resend it.');
+}
+
+async function downloadSmsImage(media: SmsMedia) {
+  const response = await fetch(media.url, { headers: buildTwilioMediaHeaders(media) });
+  if (!response.ok) throw twilioMediaDownloadError(response);
 
   const mimeType = (media.mimeType || response.headers.get('content-type') || '').split(';')[0]!.trim().toLowerCase();
   if (!SUPPORTED_IMAGE_TYPES.has(mimeType)) {
