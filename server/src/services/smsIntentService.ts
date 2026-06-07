@@ -6,12 +6,15 @@ import { markMealEatenAsPlanned } from './nutritionService.js';
 import { chatWithSmsAssistant } from './assistantService.js';
 import { toDateKey } from '../utils/dates.js';
 import type { ChatMessage } from './aiService.js';
+import { lookupFoodFromImage, type FoodLookupResult } from './foodLookupService.js';
+import { env } from '../config/env.js';
 
 export type SmsIntent =
   | 'MARK_ALL_EXERCISES_DONE'
   | 'MARK_EXERCISE_DONE'
   | 'MARK_MEAL_COMPLETE'
   | 'LOG_FOOD'
+  | 'FOOD_PHOTO'
   | 'AI_CHAT';
 
 type SmsAction =
@@ -23,6 +26,13 @@ type SmsAction =
 
 const MEAL_NAME_PATTERN = /\b(breakfast|lunch|dinner|snack|brunch)\b/i;
 const EXERCISE_COMPLETE_PATTERN = /\b(done|complete|completed|finished|check(?:ed)?\s+off)\b/i;
+const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_SMS_IMAGE_BYTES = 10 * 1024 * 1024;
+
+type SmsMedia = {
+  url: string;
+  mimeType?: string;
+};
 
 function wantsMarkMealComplete(text: string) {
   if (/\bmeal\b/i.test(text) && /\b(complete|completed|done|eaten|as planned)\b/i.test(text)) return true;
@@ -219,13 +229,73 @@ async function handleAiChat(userId: string, phone: string, message: string) {
   return reply;
 }
 
-export async function handleSms(phone: string, message: string) {
+async function downloadSmsImage(media: SmsMedia) {
+  const headers: HeadersInit = {};
+  if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN) {
+    const token = Buffer.from(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');
+    headers.Authorization = `Basic ${token}`;
+  }
+  const response = await fetch(media.url, { headers });
+  if (!response.ok) {
+    throw new Error('Could not download the WhatsApp photo.');
+  }
+
+  const mimeType = (media.mimeType || response.headers.get('content-type') || '').split(';')[0]!.trim().toLowerCase();
+  if (!SUPPORTED_IMAGE_TYPES.has(mimeType)) {
+    throw new Error('Send a JPEG, PNG, or WebP food photo.');
+  }
+
+  const contentLength = Number(response.headers.get('content-length') ?? 0);
+  if (contentLength > MAX_SMS_IMAGE_BYTES) {
+    throw new Error('Image must be 10 MB or smaller.');
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength > MAX_SMS_IMAGE_BYTES) {
+    throw new Error('Image must be 10 MB or smaller.');
+  }
+
+  return { data: buffer.toString('base64'), mimeType };
+}
+
+function summarizeFoodPhotoEstimate(result: FoodLookupResult) {
+  const estimates = result.items
+    .filter((item) => item.source === 'ai')
+    .map((item) => item.estimate);
+
+  if (!estimates.length) {
+    return 'I could not estimate the food from that photo. Try sending a clearer plate photo with the whole meal visible.';
+  }
+
+  const totals = estimates.reduce(
+    (sum, item) => ({
+      calories: sum.calories + item.calories,
+      protein: sum.protein + item.protein,
+      carbs: sum.carbs + item.carbs,
+      fat: sum.fat + item.fat
+    }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+  const foodList = estimates.map((item) => item.normalizedFoodName).join(', ');
+
+  return `Estimated from your plate: ${Math.round(totals.calories)} cal, ${Math.round(totals.protein)}g protein, ${Math.round(totals.carbs)}g carbs, ${Math.round(totals.fat)}g fat. I see: ${foodList}. Photo estimates are approximate.`;
+}
+
+async function handleFoodPhoto(userId: string, media: SmsMedia, message: string) {
+  const image = await downloadSmsImage(media);
+  const result = await lookupFoodFromImage(userId, image, message);
+  return summarizeFoodPhotoEstimate(result);
+}
+
+export async function handleSms(phone: string, message: string, media?: SmsMedia) {
   const user = await prisma.user.findFirst({ where: { phone } });
   const action = parseSmsAction(message);
-  const intent = action.intent ?? 'AI_CHAT';
+  const isFoodPhoto = Boolean(media);
+  const intent = isFoodPhoto ? 'FOOD_PHOTO' : action.intent ?? 'AI_CHAT';
+  const inboundMessage = message.trim() || (isFoodPhoto ? '[WhatsApp image]' : '');
 
   const inbound = await prisma.smsMessage.create({
-    data: { phone, userId: user?.id, direction: 'INBOUND', message, intent }
+    data: { phone, userId: user?.id, direction: 'INBOUND', message: inboundMessage, intent }
   });
 
   if (!user) {
@@ -236,7 +306,11 @@ export async function handleSms(phone: string, message: string) {
 
   let response: string;
   try {
-    response = action.intent ? await handleWriteAction(user.id, action) : await handleAiChat(user.id, phone, message);
+    if (media) {
+      response = await handleFoodPhoto(user.id, media, message);
+    } else {
+      response = action.intent ? await handleWriteAction(user.id, action) : await handleAiChat(user.id, phone, message);
+    }
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'Assistant unavailable';
     response = `Sorry, I could not answer that right now. ${detail}`;
