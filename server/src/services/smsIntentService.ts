@@ -235,11 +235,21 @@ function buildTwilioAuthHeaders(accountSid: string) {
   return { Authorization: `Basic ${token}` };
 }
 
+function parseTwilioAccountSidFromMediaUrl(mediaUrl: string) {
+  try {
+    const url = new URL(mediaUrl);
+    const match = url.pathname.match(/\/Accounts\/([^/]+)\//i);
+    return match?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
 function buildTwilioMediaFetchOptions(media: SmsMedia): RequestInit[] {
   const options: RequestInit[] = [{}];
   if (!env.TWILIO_AUTH_TOKEN) return options;
 
-  const accountSids = [media.accountSid, env.TWILIO_ACCOUNT_SID]
+  const accountSids = [parseTwilioAccountSidFromMediaUrl(media.url), media.accountSid, env.TWILIO_ACCOUNT_SID]
     .map((accountSid) => accountSid?.trim())
     .filter((accountSid): accountSid is string => Boolean(accountSid));
 
@@ -252,6 +262,9 @@ function buildTwilioMediaFetchOptions(media: SmsMedia): RequestInit[] {
 
 function twilioMediaDownloadError(response: Response) {
   if (response.status === 401 || response.status === 403) {
+    if (!env.TWILIO_AUTH_TOKEN) {
+      return new Error('Twilio requires authentication to download this WhatsApp photo, but TWILIO_AUTH_TOKEN is not configured.');
+    }
     return new Error('Twilio rejected the WhatsApp photo download. Check TWILIO_AUTH_TOKEN for the webhook account and try again.');
   }
   if (response.status === 404) {
