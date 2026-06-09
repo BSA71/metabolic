@@ -45,6 +45,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --port 8080 \
   --memory 512Mi \
   --cpu 1 \
+  --no-cpu-throttling \
   --min-instances 0 \
   --max-instances 2 \
   --add-cloudsql-instances "$CONNECTION" \
