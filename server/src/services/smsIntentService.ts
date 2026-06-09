@@ -452,7 +452,7 @@ export async function handleSms(phone: string, message: string, media?: SmsMedia
   }
 
   if (media) {
-    const response = 'Got your photo. I am estimating the food now and will send the results shortly.';
+    const response = 'Got your photo. My tiny nutrition detective hat is on. I will send the estimate shortly.';
     void processFoodPhotoInBackground(user, phone, media, message, inbound.id);
     return { inbound, response };
   }
