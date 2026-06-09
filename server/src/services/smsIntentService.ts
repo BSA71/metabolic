@@ -183,6 +183,18 @@ function pickEncouragement() {
   return lines[Math.floor(Math.random() * lines.length)];
 }
 
+function pickPhotoAcknowledgement() {
+  const lines = [
+    'Got your photo. My tiny nutrition detective hat is on. I will send the estimate shortly.',
+    'Plate pic received. I am putting on my macro goggles now.',
+    'Photo locked in. Time to interrogate those carbs, politely.',
+    'Got it. The calorie calculator goblin is crunching numbers.',
+    'Meal photo received. I am doing food math so you do not have to.',
+    'Nice, got the plate. Stand by while I turn pixels into macros.'
+  ];
+  return lines[Math.floor(Math.random() * lines.length)];
+}
+
 async function handleWriteAction(userId: string, action: Exclude<SmsAction, { intent: null }>) {
   const dashboard = await getTodayDashboard(userId);
   const todayKey = dashboard.dailyLog ? toDateKey(dashboard.dailyLog.date) : toDateKey(new Date());
@@ -452,7 +464,7 @@ export async function handleSms(phone: string, message: string, media?: SmsMedia
   }
 
   if (media) {
-    const response = 'Got your photo. My tiny nutrition detective hat is on. I will send the estimate shortly.';
+    const response = pickPhotoAcknowledgement();
     void processFoodPhotoInBackground(user, phone, media, message, inbound.id);
     return { inbound, response };
   }
