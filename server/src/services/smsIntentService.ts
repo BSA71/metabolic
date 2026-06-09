@@ -4,11 +4,11 @@ import { getTodayDashboard } from './dashboardService.js';
 import { markAllPlannedExercisesDone, markDone } from './exerciseService.js';
 import { addMealItem, markMealEatenAsPlanned } from './nutritionService.js';
 import { chatWithSmsAssistant } from './assistantService.js';
-import { toDateKey } from '../utils/dates.js';
+import { localDateKey, toDateKey } from '../utils/dates.js';
 import type { ChatMessage } from './aiService.js';
 import { lookupFoodFromImage, type FoodLookupResult } from './foodLookupService.js';
 import { env } from '../config/env.js';
-import { ensureTodayDailyLogByUserId } from './dailyLogService.js';
+import { ensureDailyLogByUserId } from './dailyLogService.js';
 
 export type SmsIntent =
   | 'MARK_ALL_EXERCISES_DONE'
@@ -297,7 +297,8 @@ async function sendWhatsAppMessage(phone: string, message: string) {
   });
 
   if (!response.ok) {
-    throw new Error('Could not send WhatsApp response.');
+    const detail = await response.text();
+    throw new Error(`Could not send WhatsApp response: ${detail.slice(0, 300)}`);
   }
 }
 
@@ -353,7 +354,7 @@ function summarizeFoodPhotoEstimate(result: FoodLookupResult) {
 }
 
 async function findMealForFoodPhoto(userId: string, message: string) {
-  const log = await ensureTodayDailyLogByUserId(userId);
+  const log = await ensureDailyLogByUserId(userId, localDateKey());
   if (!log) throw new Error('No active program found for today.');
 
   const meals = await prisma.meal.findMany({
@@ -422,10 +423,15 @@ async function processFoodPhotoInBackground(user: SmsUser, phone: string, media:
   }
 
   await prisma.smsMessage.update({ where: { id: inboundId }, data: { status: 'PROCESSED', response } });
-  await prisma.smsMessage.create({
+  const outbound = await prisma.smsMessage.create({
     data: { phone, userId: user.id, direction: 'OUTBOUND', message: response, response, status: 'PROCESSED' }
   });
-  await sendWhatsAppMessage(phone, response);
+  try {
+    await sendWhatsAppMessage(phone, response);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Could not send WhatsApp response.';
+    await prisma.smsMessage.update({ where: { id: outbound.id }, data: { status: 'FAILED', response: detail } });
+  }
 }
 
 export async function handleSms(phone: string, message: string, media?: SmsMedia) {
