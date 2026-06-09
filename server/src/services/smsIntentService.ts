@@ -1,13 +1,14 @@
-import { SmsDirection } from '@prisma/client';
+import { MealStatus, SmsDirection } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { getTodayDashboard } from './dashboardService.js';
 import { markAllPlannedExercisesDone, markDone } from './exerciseService.js';
-import { markMealEatenAsPlanned } from './nutritionService.js';
+import { addMealItem, markMealEatenAsPlanned } from './nutritionService.js';
 import { chatWithSmsAssistant } from './assistantService.js';
 import { toDateKey } from '../utils/dates.js';
 import type { ChatMessage } from './aiService.js';
 import { lookupFoodFromImage, type FoodLookupResult } from './foodLookupService.js';
 import { env } from '../config/env.js';
+import { ensureTodayDailyLogByUserId } from './dailyLogService.js';
 
 export type SmsIntent =
   | 'MARK_ALL_EXERCISES_DONE'
@@ -34,6 +35,8 @@ type SmsMedia = {
   mimeType?: string;
   accountSid?: string;
 };
+
+type SmsUser = NonNullable<Awaited<ReturnType<typeof prisma.user.findFirst>>>;
 
 function wantsMarkMealComplete(text: string) {
   if (/\bmeal\b/i.test(text) && /\b(complete|completed|done|eaten|as planned)\b/i.test(text)) return true;
@@ -273,6 +276,31 @@ function twilioMediaDownloadError(response: Response) {
   return new Error('Could not download the WhatsApp photo. Please resend it.');
 }
 
+async function sendWhatsAppMessage(phone: string, message: string) {
+  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_PHONE_NUMBER) {
+    throw new Error('Twilio outbound messaging is not configured.');
+  }
+
+  const params = new URLSearchParams({
+    From: env.TWILIO_PHONE_NUMBER.startsWith('whatsapp:') ? env.TWILIO_PHONE_NUMBER : `whatsapp:${env.TWILIO_PHONE_NUMBER}`,
+    To: `whatsapp:${phone}`,
+    Body: message
+  });
+  const token = Buffer.from(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');
+  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${token}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: params
+  });
+
+  if (!response.ok) {
+    throw new Error('Could not send WhatsApp response.');
+  }
+}
+
 async function downloadSmsImage(media: SmsMedia) {
   let response: Response | null = null;
   for (const options of buildTwilioMediaFetchOptions(media)) {
@@ -324,10 +352,80 @@ function summarizeFoodPhotoEstimate(result: FoodLookupResult) {
   return `Estimated from your plate: ${Math.round(totals.calories)} cal, ${Math.round(totals.protein)}g protein, ${Math.round(totals.carbs)}g carbs, ${Math.round(totals.fat)}g fat. I see: ${foodList}. Photo estimates are approximate.`;
 }
 
+async function findMealForFoodPhoto(userId: string, message: string) {
+  const log = await ensureTodayDailyLogByUserId(userId);
+  if (!log) throw new Error('No active program found for today.');
+
+  const meals = await prisma.meal.findMany({
+    where: { dailyLogId: log.id },
+    include: { items: true },
+    orderBy: { mealNumber: 'asc' }
+  });
+
+  const mealName = parseMealName(message);
+  if (mealName) {
+    const namedMeal = meals.find((meal) => meal.name.toLowerCase().includes(mealName.toLowerCase()));
+    if (namedMeal) return namedMeal;
+  }
+
+  return meals.find((meal) => !['EATEN_AS_PLANNED', 'SKIPPED', 'MISSED'].includes(meal.status))
+    ?? meals[meals.length - 1]
+    ?? prisma.meal.create({
+      data: {
+        dailyLogId: log.id,
+        userId,
+        mealNumber: 1,
+        name: 'Additional food',
+        status: MealStatus.UNPLANNED
+      },
+      include: { items: true }
+    });
+}
+
+async function logFoodPhotoEstimates(userId: string, result: FoodLookupResult, message: string) {
+  const meal = await findMealForFoodPhoto(userId, message);
+  const estimates = result.items
+    .filter((item) => item.source === 'ai')
+    .map((item) => item.estimate);
+
+  for (const estimate of estimates) {
+    await addMealItem(userId, meal.id, {
+      type: 'ACTUAL',
+      nameSnapshot: estimate.normalizedFoodName,
+      quantity: 1,
+      unit: 'serving',
+      calories: estimate.calories,
+      protein: estimate.protein,
+      carbs: estimate.carbs,
+      fat: estimate.fat
+    });
+  }
+
+  return { mealName: meal.name, count: estimates.length };
+}
+
 async function handleFoodPhoto(userId: string, media: SmsMedia, message: string) {
   const image = await downloadSmsImage(media);
   const result = await lookupFoodFromImage(userId, image, message);
-  return summarizeFoodPhotoEstimate(result);
+  const logged = await logFoodPhotoEstimates(userId, result, message);
+  const summary = summarizeFoodPhotoEstimate(result);
+  return logged.count > 0 ? `${summary} Logged to ${logged.mealName}.` : summary;
+}
+
+async function processFoodPhotoInBackground(user: SmsUser, phone: string, media: SmsMedia, message: string, inboundId: string) {
+  let response: string;
+  try {
+    response = await handleFoodPhoto(user.id, media, message);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Assistant unavailable';
+    response = `Sorry, I could not answer that right now. ${detail}`;
+  }
+
+  await prisma.smsMessage.update({ where: { id: inboundId }, data: { status: 'PROCESSED', response } });
+  await prisma.smsMessage.create({
+    data: { phone, userId: user.id, direction: 'OUTBOUND', message: response, response, status: 'PROCESSED' }
+  });
+  await sendWhatsAppMessage(phone, response);
 }
 
 export async function handleSms(phone: string, message: string, media?: SmsMedia) {
@@ -347,13 +445,15 @@ export async function handleSms(phone: string, message: string, media?: SmsMedia
     return { inbound, response };
   }
 
+  if (media) {
+    const response = 'Got your photo. I am estimating the food now and will send the results shortly.';
+    void processFoodPhotoInBackground(user, phone, media, message, inbound.id);
+    return { inbound, response };
+  }
+
   let response: string;
   try {
-    if (media) {
-      response = await handleFoodPhoto(user.id, media, message);
-    } else {
-      response = action.intent ? await handleWriteAction(user.id, action) : await handleAiChat(user.id, phone, message);
-    }
+    response = action.intent ? await handleWriteAction(user.id, action) : await handleAiChat(user.id, phone, message);
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'Assistant unavailable';
     response = `Sorry, I could not answer that right now. ${detail}`;
