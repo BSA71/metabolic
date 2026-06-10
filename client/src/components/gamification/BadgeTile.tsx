@@ -4,7 +4,7 @@ import { resolveBadgeDisplay } from './badgeDisplay';
 import type { UserBadgeView } from '../../types/gamification';
 
 export function BadgeTile({ badge }: { badge: UserBadgeView }) {
-  const { earned, locked, inProgress } = resolveBadgeDisplay(badge.status);
+  const { earned, inProgress } = resolveBadgeDisplay(badge.status);
 
   return (
     <Card
