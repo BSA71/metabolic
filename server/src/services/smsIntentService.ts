@@ -38,6 +38,34 @@ type SmsMedia = {
 
 type SmsUser = NonNullable<Awaited<ReturnType<typeof prisma.user.findFirst>>>;
 
+function smsKeyword(message: string) {
+  return message.trim().toUpperCase();
+}
+
+function isSmsStartKeyword(message: string) {
+  return ['START', 'UNSTOP'].includes(smsKeyword(message));
+}
+
+function isSmsHelpKeyword(message: string) {
+  return ['HELP', 'INFO'].includes(smsKeyword(message));
+}
+
+function isSmsStopKeyword(message: string) {
+  return ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT', 'REVOKE'].includes(smsKeyword(message));
+}
+
+function smsOptInResponse() {
+  return 'Master Metabolic: You are opted in for conversational SMS replies about meals, workouts, program status, progress, and support. Msg frequency varies. Msg & data rates may apply. Reply HELP for help or STOP to opt out.';
+}
+
+function smsHelpResponse() {
+  return 'Master Metabolic SMS support: Text questions about your meals, workouts, program status, or progress. Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out. Email support@master-metabolic.com for help.';
+}
+
+function smsOptOutResponse() {
+  return 'Master Metabolic: You have opted out and will no longer receive SMS messages from this number. Reply START to resubscribe.';
+}
+
 function wantsMarkMealComplete(text: string) {
   if (/\bmeal\b/i.test(text) && /\b(complete|completed|done|eaten|as planned)\b/i.test(text)) return true;
   if (/\bmark\b.*\b(breakfast|lunch|dinner|snack|brunch)\b/i.test(text)) return true;
@@ -448,6 +476,39 @@ async function processFoodPhotoInBackground(user: SmsUser, phone: string, media:
 
 export async function handleSms(phone: string, message: string, media?: SmsMedia) {
   const user = await prisma.user.findFirst({ where: { phone } });
+  if (!media && isSmsStartKeyword(message)) {
+    const response = smsOptInResponse();
+    await prisma.smsMessage.create({
+      data: { phone, userId: user?.id, direction: 'INBOUND', message: message.trim(), intent: 'OPT_IN', status: 'PROCESSED', response }
+    });
+    await prisma.smsMessage.create({
+      data: { phone, userId: user?.id, direction: 'OUTBOUND', message: response, response, status: 'PROCESSED' }
+    });
+    return { response };
+  }
+
+  if (!media && isSmsHelpKeyword(message)) {
+    const response = smsHelpResponse();
+    await prisma.smsMessage.create({
+      data: { phone, userId: user?.id, direction: 'INBOUND', message: message.trim(), intent: 'HELP', status: 'PROCESSED', response }
+    });
+    await prisma.smsMessage.create({
+      data: { phone, userId: user?.id, direction: 'OUTBOUND', message: response, response, status: 'PROCESSED' }
+    });
+    return { response };
+  }
+
+  if (!media && isSmsStopKeyword(message)) {
+    const response = smsOptOutResponse();
+    await prisma.smsMessage.create({
+      data: { phone, userId: user?.id, direction: 'INBOUND', message: message.trim(), intent: 'OPT_OUT', status: 'PROCESSED', response }
+    });
+    await prisma.smsMessage.create({
+      data: { phone, userId: user?.id, direction: 'OUTBOUND', message: response, response, status: 'PROCESSED' }
+    });
+    return { response };
+  }
+
   const action = parseSmsAction(message);
   const isFoodPhoto = Boolean(media);
   const intent = isFoodPhoto ? 'FOOD_PHOTO' : action.intent ?? 'AI_CHAT';
