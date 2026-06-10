@@ -27,7 +27,7 @@ export const BADGE_ART: Partial<Record<string, string>> = {
 };
 
 /** Bump when replacing PNGs so clients skip cached assets. */
-const BADGE_ART_VERSION = '3';
+const BADGE_ART_VERSION = '4';
 
 export function badgeArtUrl(badgeId: string) {
   const path = BADGE_ART[badgeId];
