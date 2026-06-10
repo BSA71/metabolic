@@ -10,7 +10,6 @@ const TOPBAR_RING_SIZE = 44;
 const TOPBAR_MOBILE_ICON = 20;
 /** Top bar badge — 25% larger than prior 64px / 36px display */
 const TOPBAR_BADGE_SIZE = 80;
-const TOPBAR_BADGE_SIZE_MOBILE = 45;
 
 export function TopbarGamification() {
   const [data, setData] = useState<GamificationDashboard | null>(null);

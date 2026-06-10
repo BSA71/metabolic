@@ -283,7 +283,7 @@ def key_black_background(path: Path, threshold: int = 20) -> None:
     arr = np.array(im)
     rgb = arr[:, :, :3]
     mask = (rgb[:, :, 0] <= threshold) & (rgb[:, :, 1] <= threshold) & (rgb[:, :, 2] <= threshold)
-    arr[:, :, 3] = np.where(mask, 0, 255)
+    arr[:, :, 3] = np.where(mask, 0, arr[:, :, 3])
     Image.fromarray(arr).save(path, "PNG", optimize=True)
 
 
