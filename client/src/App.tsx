@@ -21,6 +21,7 @@ import { LoginPage } from './pages/LoginPage';
 import { FirstTimeSetupPage } from './pages/FirstTimeSetupPage';
 import { CampaignPolicyPage } from './pages/CampaignPolicyPage';
 import { CampaignTermsPage } from './pages/CampaignTermsPage';
+import { SmsOptInPage } from './pages/SmsOptInPage';
 import { GamificationPage } from './pages/GamificationPage';
 import { JourneyPage } from './pages/JourneyPage';
 import { BadgesPage } from './pages/BadgesPage';
@@ -147,6 +148,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage authenticated={Boolean(firebaseUser)} appUser={appUser} />} />
+        <Route path="/sms-opt-in" element={<SmsOptInPage />} />
         <Route path="/campaign-policy" element={<CampaignPolicyPage />} />
         <Route path="/campaign-terms" element={<CampaignTermsPage />} />
         <Route

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { LegalPageLayout } from '../components/layout/LegalPageLayout';
 
 const SUPPORT_EMAIL = 'support@master-metabolic.com';
@@ -37,19 +38,26 @@ export function CampaignPolicyPage() {
           <li>Comply with legal obligations and carrier or messaging platform requirements</li>
         </ul>
         <p className="mt-2 text-app-text-muted">
-          We do not sell or share your mobile phone number or SMS content with third parties for their own
-          marketing purposes.
+          We do not sell, rent, or share your mobile phone number, SMS consent status, or SMS content with
+          third parties or affiliates for their own marketing or promotional purposes.
         </p>
       </section>
 
       <section>
         <h2 className="text-lg font-semibold">Opt-in and consent</h2>
         <p className="mt-2 text-app-text-muted">
-          You opt in to receive SMS messages from Master Metabolic when a phone number you control is added to
-          your Metabolic account (by you or an authorized administrator) and you send an initial text message to
-          our SMS number. By opting in, you confirm that you are the account holder or have permission to use
-          the phone number provided and that you agree to receive automated and non-automated text messages
-          related to your Metabolic program.
+          You opt in to receive SMS messages from Master Metabolic by texting <strong>START</strong> to the
+          Master Metabolic SMS number after viewing the public{' '}
+          <Link to="/sms-opt-in" className="font-medium text-app-text underline-offset-2 hover:underline">
+            SMS opt-in disclosure
+          </Link>
+          . By opting in, you confirm that you are the account holder or have permission to use the phone number
+          provided and that you agree to receive conversational SMS replies related to your Metabolic account,
+          including meals, workouts, program status, progress, and support.
+        </p>
+        <p className="mt-2 text-app-text-muted">
+          SMS consent is optional and is not required to purchase goods or services. We do not send marketing
+          messages, promotional blasts, or unsolicited reminders under this SMS program.
         </p>
       </section>
 
