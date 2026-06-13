@@ -22,6 +22,20 @@ export type ExerciseEstimate = {
   confidence: number;
 };
 
+export type MealSuggestion = {
+  name: string;
+  description: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+};
+
+export type MealSuggestionResult = {
+  intro: string;
+  options: MealSuggestion[];
+};
+
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 export type ChatChannel = 'web' | 'sms';
@@ -30,6 +44,7 @@ export interface AiProvider {
   lookupFood(input: string): Promise<FoodEstimate[]>;
   lookupFoodFromImage(image: { data: string; mimeType: string }, input?: string): Promise<FoodEstimate[]>;
   lookupExercises(input: string): Promise<ExerciseEstimate[]>;
+  suggestMealOptions(input: string, context: string): Promise<MealSuggestionResult>;
   chat(messages: ChatMessage[], context: string, channel?: ChatChannel): Promise<string>;
 }
 
@@ -44,6 +59,12 @@ const foodEstimateSchema = z.object({
 
 const foodLookupResponseSchema = z.union([
   z.object({ items: z.array(foodEstimateSchema).min(1) }),
+  foodEstimateSchema.transform((item) => ({ items: [item] }))
+]);
+
+const looseFoodLookupResponseSchema = z.union([
+  z.object({ items: z.array(foodEstimateSchema) }),
+  z.array(foodEstimateSchema).transform((items) => ({ items })),
   foodEstimateSchema.transform((item) => ({ items: [item] }))
 ]);
 
@@ -138,6 +159,20 @@ const exerciseLookupResponseSchema = z.object({
   items: z.array(exerciseEstimateSchema).min(1).max(8)
 });
 
+const mealSuggestionSchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().min(1).max(240),
+  calories: z.number().nonnegative(),
+  protein: z.number().nonnegative(),
+  carbs: z.number().nonnegative(),
+  fat: z.number().nonnegative()
+});
+
+const mealSuggestionResponseSchema = z.object({
+  intro: z.string().min(1).max(300).optional(),
+  options: z.array(mealSuggestionSchema).min(1).max(5)
+});
+
 const FOOD_LOOKUP_PROMPT = `Estimate nutrition for each distinct food in the input.
 Return JSON only: { "items": [ { "normalizedFoodName": string (include portion), "calories": number, "protein": grams, "carbs": grams, "fat": grams, "confidence": 0-1 }, ... ] }
 Each food line must be its own item. Never combine multiple foods into one entry.`;
@@ -145,6 +180,14 @@ Each food line must be its own item. Never combine multiple foods into one entry
 const EXERCISE_LOOKUP_PROMPT = `Suggest relevant exercises for the user's query.
 Return JSON only: { "items": [ { "name": string, "description": string (1 short sentence on form and cues), "category": "Strength"|"Cardio"|"Recovery"|null, "bodyPart": "Chest"|"Back"|"Shoulders"|"Biceps"|"Triceps"|"Forearms"|"Core"|"Legs"|"Glutes"|"Calves"|"Full Body"|null, "defaultSets": number|null, "defaultReps": number|null, "defaultDurationMinutes": number|null, "confidence": 0-1 }, ... ] }
 Return exactly 4 distinct exercises. Keep descriptions under 140 characters. Use Strength for resistance work, Cardio for endurance, Recovery for mobility/stretching. Set bodyPart to the primary muscle group trained.`;
+
+const MEAL_SUGGESTION_PROMPT = `Suggest restaurant or meal choices that fit the user's current macro context.
+Use common menu knowledge when the user names a restaurant, but make clear options are approximate.
+If the user mentions multiple restaurants, include a useful spread across those restaurants instead of only one.
+Return JSON only: { "intro": string, "options": [ { "name": string, "description": string, "calories": number, "protein": grams, "carbs": grams, "fat": grams }, ... ] }
+Return 3 practical, distinct options. Keep intro conversational and under 220 characters. Keep each description under 160 characters.`;
+
+const MEAL_SUGGESTION_TIMEOUT_MS = 7000;
 
 const ASSISTANT_SYSTEM = `You are a concise metabolic health coach assistant for the Metabolic app.
 Answer using the user's live program data when relevant. Be practical and specific.
@@ -206,6 +249,19 @@ function parseModelJson(text: string) {
   }
 }
 
+function parseFoodLookupResponse(text: string) {
+  const parsed = parseModelJson(text);
+  const result = foodLookupResponseSchema.safeParse(parsed);
+  if (result.success) return result.data.items.map(normalizeEstimate);
+
+  const loose = looseFoodLookupResponseSchema.safeParse(parsed);
+  if (loose.success && loose.data.items.length === 0) {
+    throw new Error('Model returned no food items');
+  }
+
+  throw result.error;
+}
+
 function parseExerciseLookupResponse(text: string) {
   const parsed = parseModelJson(text);
   const result = exerciseLookupResponseSchema.safeParse(parsed);
@@ -223,6 +279,59 @@ function parseExerciseLookupResponse(text: string) {
   }
 
   return normalized;
+}
+
+function normalizeMealSuggestion(parsed: z.infer<typeof mealSuggestionSchema>): MealSuggestion {
+  return {
+    name: parsed.name.trim(),
+    description: parsed.description.trim(),
+    calories: Math.round(parsed.calories),
+    protein: roundMacro(parsed.protein),
+    carbs: roundMacro(parsed.carbs),
+    fat: roundMacro(parsed.fat)
+  };
+}
+
+function parseMealSuggestionResponse(text: string): MealSuggestionResult {
+  const parsed = parseModelJson(text);
+  const result = mealSuggestionResponseSchema.safeParse(parsed);
+  if (result.success) {
+    return {
+      intro: result.data.intro?.trim() || 'Here are a few options that should keep you close without overcomplicating lunch.',
+      options: result.data.options.map(normalizeMealSuggestion)
+    };
+  }
+
+  const options = Array.isArray(parsed?.options) ? parsed.options : Array.isArray(parsed) ? parsed : [parsed];
+  const normalized: MealSuggestion[] = [];
+  for (const option of options) {
+    const parsedOption = mealSuggestionSchema.safeParse(option);
+    if (parsedOption.success) normalized.push(normalizeMealSuggestion(parsedOption.data));
+  }
+  if (normalized.length) {
+    return {
+      intro: 'Here are a few options that should keep you close without overcomplicating lunch.',
+      options: normalized.slice(0, 5)
+    };
+  }
+
+  throw result.error;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
 }
 
 class MockAiProvider implements AiProvider {
@@ -346,6 +455,85 @@ class MockAiProvider implements AiProvider {
     ];
   }
 
+  async suggestMealOptions(input: string, _context: string): Promise<MealSuggestionResult> {
+    const lower = input.toLowerCase();
+    const options: MealSuggestion[] = [];
+    if (lower.includes('chipotle')) {
+      options.push(
+        {
+          name: 'Chicken bowl with fajita veggies',
+          description: 'Chicken, fajita veggies, tomato salsa, lettuce, and a light scoop of rice.',
+          calories: 460,
+          protein: 38,
+          carbs: 45,
+          fat: 13
+        },
+        {
+          name: 'Chipotle steak salad bowl',
+          description: 'Steak over lettuce with fajita veggies, tomato salsa, and a small amount of beans.',
+          calories: 390,
+          protein: 35,
+          carbs: 32,
+          fat: 12
+        }
+      );
+    }
+    if (lower.includes('jersey mike') || lower.includes('jersey mikes') || lower.includes("jersey mike's")) {
+      options.push(
+        {
+          name: 'Jersey Mike\'s turkey mini',
+          description: 'Mini turkey sub Mike\'s Way. Keep cheese and mayo light if you want fats lower.',
+          calories: 470,
+          protein: 27,
+          carbs: 48,
+          fat: 18
+        },
+        {
+          name: 'Jersey Mike\'s chicken bowl',
+          description: 'Grilled chicken in a bowl with vegetables and vinegar-based flavor. Skip heavy sauces.',
+          calories: 420,
+          protein: 38,
+          carbs: 20,
+          fat: 18
+        }
+      );
+    }
+    options.push(
+      {
+        name: 'Lean protein bowl',
+        description: 'Choose grilled protein, vegetables, salsa or light sauce, and a moderate starch portion.',
+        calories: 450,
+        protein: 35,
+        carbs: 40,
+        fat: 12
+      },
+      {
+        name: 'Protein-forward salad',
+        description: 'Start with greens, add grilled protein, keep dressing on the side, and add one carb if needed.',
+        calories: 380,
+        protein: 34,
+        carbs: 24,
+        fat: 14
+      },
+      {
+        name: 'Simple plate option',
+        description: 'Order lean protein plus vegetables, then add rice, potatoes, or bread only to match remaining carbs.',
+        calories: 500,
+        protein: 40,
+        carbs: 45,
+        fat: 15
+      }
+    );
+    const uniqueOptions = Array.from(new Map(options.map((option) => [option.name, option])).values()).slice(0, 3);
+    return {
+      intro:
+        uniqueOptions.length > 1
+          ? 'Good call planning ahead. I would keep this protein-forward and pick the option that best matches how hungry you are.'
+          : 'Good call planning ahead. Here is a simple option that should keep lunch close to your targets.',
+      options: uniqueOptions
+    };
+  }
+
   async chat(messages: ChatMessage[], context: string, channel: ChatChannel = 'web'): Promise<string> {
     const last = messages.at(-1)?.content.toLowerCase() ?? '';
     const suffix = channel === 'sms' ? ' (mock SMS — set AI_PROVIDER=gemini.)' : ' (mock — set AI_PROVIDER=gemini.)';
@@ -412,17 +600,27 @@ class GeminiAiProvider implements AiProvider {
   }
 
   async lookupFood(input: string): Promise<FoodEstimate[]> {
-    try {
-      const lines = splitFoodLines(input);
-      const prompt = lines.length > 1
-        ? `${FOOD_LOOKUP_PROMPT}\n\nFoods (${lines.length} items, one JSON entry each):\n${lines.map((line, index) => `${index + 1}. ${line}`).join('\n')}`
-        : `${FOOD_LOOKUP_PROMPT}\n\nFood: ${input.trim()}`;
+    const lines = splitFoodLines(input);
+    const prompt = lines.length > 1
+      ? `${FOOD_LOOKUP_PROMPT}\n\nFoods (${lines.length} items, one JSON entry each):\n${lines.map((line, index) => `${index + 1}. ${line}`).join('\n')}`
+      : `${FOOD_LOOKUP_PROMPT}\n\nFood: ${input.trim()}`;
 
+    try {
       const result = await this.foodModel().generateContent(prompt);
-      const parsed = foodLookupResponseSchema.parse(JSON.parse(result.response.text()));
-      return parsed.items.map(normalizeEstimate);
+      return parseFoodLookupResponse(result.response.text());
     } catch (error) {
-      throw wrapAiError(error, 'food lookup');
+      try {
+        const retry = await this.foodModel().generateContent(
+          `${prompt}\n\nImportant: respond with valid JSON and at least one food item for every requested food.`
+        );
+        return parseFoodLookupResponse(retry.response.text());
+      } catch {
+        try {
+          return await new MockAiProvider().lookupFood(input);
+        } catch {
+          throw wrapAiError(error, 'food lookup');
+        }
+      }
     }
   }
 
@@ -437,10 +635,13 @@ Optional user note: ${input.trim() || 'none'}`;
         { text: prompt },
         { inlineData: { mimeType: image.mimeType, data: image.data } }
       ]);
-      const parsed = foodLookupResponseSchema.parse(JSON.parse(result.response.text()));
-      return parsed.items.map(normalizeEstimate);
+      return parseFoodLookupResponse(result.response.text());
     } catch (error) {
-      throw wrapAiError(error, 'food photo lookup');
+      try {
+        return await new MockAiProvider().lookupFoodFromImage(image, input);
+      } catch {
+        throw wrapAiError(error, 'food photo lookup');
+      }
     }
   }
 
@@ -462,6 +663,36 @@ Optional user note: ${input.trim() || 'none'}`;
           return await new MockAiProvider().lookupExercises(query);
         } catch {
           throw wrapAiError(error, 'exercise lookup');
+        }
+      }
+    }
+  }
+
+  async suggestMealOptions(input: string, context: string): Promise<MealSuggestionResult> {
+    const prompt = `${MEAL_SUGGESTION_PROMPT}
+
+Macro context:
+${context}
+
+User request:
+${input.trim()}`;
+
+    try {
+      const result = await withTimeout(this.foodModel().generateContent(prompt), MEAL_SUGGESTION_TIMEOUT_MS, 'Meal suggestions');
+      return parseMealSuggestionResponse(result.response.text());
+    } catch (error) {
+      try {
+        const retry = await withTimeout(
+          this.foodModel().generateContent(`${prompt}\n\nImportant: respond with valid JSON only and include exactly 3 options.`),
+          MEAL_SUGGESTION_TIMEOUT_MS,
+          'Meal suggestion retry'
+        );
+        return parseMealSuggestionResponse(retry.response.text());
+      } catch {
+        try {
+          return await new MockAiProvider().suggestMealOptions(input, context);
+        } catch {
+          throw wrapAiError(error, 'meal suggestions');
         }
       }
     }

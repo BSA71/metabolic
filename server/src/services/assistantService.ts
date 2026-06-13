@@ -125,6 +125,34 @@ export async function chatWithAssistant(userId: string, messages: ChatMessage[])
   return { reply, contextUsed: true };
 }
 
+export async function suggestMealOptions(userId: string, inputText: string) {
+  const dashboard = await getTodayDashboard(userId);
+  const context = JSON.stringify({
+    today: dashboard.dailyLog
+      ? {
+          calorieTarget: n(dashboard.dailyLog.calorieTarget),
+          caloriesActual: n(dashboard.dailyLog.caloriesActual),
+          caloriesRemaining: dashboard.summary?.caloriesRemaining ?? null,
+          proteinTarget: n(dashboard.dailyLog.proteinTarget),
+          proteinActual: n(dashboard.dailyLog.proteinActual),
+          proteinRemaining: dashboard.summary
+            ? Math.max(0, n(dashboard.dailyLog.proteinTarget) - n(dashboard.dailyLog.proteinActual))
+            : null
+        }
+      : null,
+    currentMeals: dashboard.meals.map((meal) => ({
+      mealNumber: meal.mealNumber,
+      name: meal.name,
+      plannedCalories: n(meal.plannedCalories),
+      plannedProtein: n(meal.plannedProtein),
+      actualCalories: n(meal.actualCalories),
+      actualProtein: n(meal.actualProtein)
+    }))
+  });
+  const result = await getAiProvider().suggestMealOptions(inputText, context);
+  return { ...result, contextUsed: true };
+}
+
 const SMS_MAX_LENGTH = 1500;
 
 function truncateSmsReply(reply: string) {
