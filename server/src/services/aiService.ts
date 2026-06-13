@@ -255,8 +255,11 @@ function parseFoodLookupResponse(text: string) {
   if (result.success) return result.data.items.map(normalizeEstimate);
 
   const loose = looseFoodLookupResponseSchema.safeParse(parsed);
-  if (loose.success && loose.data.items.length === 0) {
-    throw new Error('Model returned no food items');
+  if (loose.success) {
+    if (loose.data.items.length === 0) {
+      throw new Error('Model returned no food items');
+    }
+    return loose.data.items.map(normalizeEstimate);
   }
 
   throw result.error;
@@ -614,23 +617,19 @@ class GeminiAiProvider implements AiProvider {
           `${prompt}\n\nImportant: respond with valid JSON and at least one food item for every requested food.`
         );
         return parseFoodLookupResponse(retry.response.text());
-      } catch {
-        try {
-          return await new MockAiProvider().lookupFood(input);
-        } catch {
-          throw wrapAiError(error, 'food lookup');
-        }
+      } catch (retryError) {
+        throw wrapAiError(retryError, 'food lookup');
       }
     }
   }
 
   async lookupFoodFromImage(image: { data: string; mimeType: string }, input = ''): Promise<FoodEstimate[]> {
-    try {
-      const prompt = `${FOOD_LOOKUP_PROMPT}
+    const prompt = `${FOOD_LOOKUP_PROMPT}
 
 Estimate the visible food in this image. Use the optional user note only as context; do not invent foods that are not visible.
 Optional user note: ${input.trim() || 'none'}`;
 
+    try {
       const result = await this.foodModel().generateContent([
         { text: prompt },
         { inlineData: { mimeType: image.mimeType, data: image.data } }
@@ -638,9 +637,13 @@ Optional user note: ${input.trim() || 'none'}`;
       return parseFoodLookupResponse(result.response.text());
     } catch (error) {
       try {
-        return await new MockAiProvider().lookupFoodFromImage(image, input);
-      } catch {
-        throw wrapAiError(error, 'food photo lookup');
+        const retry = await this.foodModel().generateContent([
+          { text: `${prompt}\n\nImportant: respond with valid JSON and at least one food item for the visible food.` },
+          { inlineData: { mimeType: image.mimeType, data: image.data } }
+        ]);
+        return parseFoodLookupResponse(retry.response.text());
+      } catch (retryError) {
+        throw wrapAiError(retryError, 'food photo lookup');
       }
     }
   }

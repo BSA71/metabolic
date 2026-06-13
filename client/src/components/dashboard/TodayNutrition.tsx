@@ -34,7 +34,9 @@ type MealSuggestion = {
 };
 
 const FREE_FOOD_TRIGGERS = new Set(['free', 'free food', 'free foods']);
-const ADVISORY_PROMPT_PATTERN = /\b(what can i eat|what should i eat|what do you suggest|suggest|recommend|restaurant|chipotle|olive garden|order)\b/i;
+const MEAL_SUGGESTION_QUESTION_PATTERN =
+  /\b(what (?:can|should) i (?:eat|order|get)|what do you suggest|what would you suggest|help me (?:choose|pick|order)|(?:any )?suggestions? for|recommend(?:ations)? for)\b/i;
+const MEAL_SUGGESTION_AT_VENUE_PATTERN = /\b(i'm|im) at\b.+\b(what|suggest|recommend)\b/i;
 
 const FREE_FOOD_SECTIONS = [
   {
@@ -111,7 +113,11 @@ function isFreeFoodRequest(input: string) {
 }
 
 function isMealSuggestionRequest(input: string) {
-  return ADVISORY_PROMPT_PATTERN.test(input);
+  const text = input.trim();
+  if (!text) return false;
+  if (text.endsWith('?')) return true;
+  if (/^(what|how|can you|could you|help me|i need|looking for)\b/i.test(text)) return true;
+  return MEAL_SUGGESTION_QUESTION_PATTERN.test(text) || MEAL_SUGGESTION_AT_VENUE_PATTERN.test(text);
 }
 
 function fileToBase64(file: File) {
@@ -333,14 +339,18 @@ export function TodayNutrition({
       });
       setEntry('');
       setExpandedMealId(targetMealId);
-      await api(`/api/gamification/meals/${targetMealId}/log`, {
-        method: 'POST',
-        body: JSON.stringify({
-          status: 'ATE_SOMETHING_DIFFERENT',
-          actualFoodDescription: option.name
-        })
-      });
       await onChange();
+      try {
+        await api(`/api/gamification/meals/${targetMealId}/log`, {
+          method: 'POST',
+          body: JSON.stringify({
+            status: 'ATE_SOMETHING_DIFFERENT',
+            actualFoodDescription: option.name
+          })
+        });
+      } catch {
+        // Meal was logged; gamification is best-effort.
+      }
     } catch (err) {
       setSuggestionError(err instanceof Error ? err.message : 'Could not log that meal option.');
     } finally {
