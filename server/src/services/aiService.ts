@@ -36,6 +36,27 @@ export type MealSuggestionResult = {
   options: MealSuggestion[];
 };
 
+export type ShoppingListInputItem = {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  occurrenceCount: number;
+};
+
+export type EnrichedShoppingListItem = {
+  id: string;
+  groceryDescription: string;
+  groceryCategory: string;
+  storeLocation: string | null;
+  notes: string | null;
+};
+
+export type EnrichedShoppingListResult = {
+  intro: string;
+  items: EnrichedShoppingListItem[];
+};
+
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 export type ChatChannel = 'web' | 'sms';
@@ -45,6 +66,7 @@ export interface AiProvider {
   lookupFoodFromImage(image: { data: string; mimeType: string }, input?: string): Promise<FoodEstimate[]>;
   lookupExercises(input: string): Promise<ExerciseEstimate[]>;
   suggestMealOptions(input: string, context: string): Promise<MealSuggestionResult>;
+  enrichShoppingList(items: ShoppingListInputItem[], storeName?: string | null): Promise<EnrichedShoppingListResult>;
   chat(messages: ChatMessage[], context: string, channel?: ChatChannel): Promise<string>;
 }
 
@@ -173,6 +195,19 @@ const mealSuggestionResponseSchema = z.object({
   options: z.array(mealSuggestionSchema).min(1).max(5)
 });
 
+const enrichedShoppingListItemSchema = z.object({
+  id: z.string().min(1),
+  groceryDescription: z.string().min(1).max(160),
+  groceryCategory: z.string().min(1).max(80),
+  storeLocation: z.union([z.string().max(120), z.null()]).optional(),
+  notes: z.union([z.string().max(160), z.null()]).optional()
+});
+
+const enrichedShoppingListResponseSchema = z.object({
+  intro: z.string().min(1).max(320).optional(),
+  items: z.array(enrichedShoppingListItemSchema).min(1)
+});
+
 const FOOD_LOOKUP_PROMPT = `Estimate nutrition for each distinct food in the input.
 Return JSON only: { "items": [ { "normalizedFoodName": string (include portion), "calories": number, "protein": grams, "carbs": grams, "fat": grams, "confidence": 0-1 }, ... ] }
 Each food line must be its own item. Never combine multiple foods into one entry.`;
@@ -187,7 +222,16 @@ If the user mentions multiple restaurants, include a useful spread across those 
 Return JSON only: { "intro": string, "options": [ { "name": string, "description": string, "calories": number, "protein": grams, "carbs": grams, "fat": grams }, ... ] }
 Return 3 practical, distinct options. Keep intro conversational and under 220 characters. Keep each description under 160 characters.`;
 
+const SHOPPING_LIST_PROMPT = `Convert planned meal items into practical grocery-store shopping quantities.
+Use packages, weights, counts, bunches, bags, cartons, and other units shoppers actually buy.
+Round up slightly when needed so the shopper has enough for the planned amount.
+If a store name is provided, include a typical aisle or section for that chain. Approximate is fine.
+If no store is provided, set storeLocation to null and use a sensible groceryCategory such as Produce, Meat & Seafood, Dairy & Eggs, Bakery, Pantry, Frozen, Beverages, or Other.
+Return JSON only: { "intro": string, "items": [ { "id": string, "groceryDescription": string, "groceryCategory": string, "storeLocation": string|null, "notes": string|null }, ... ] }
+Every input id must appear exactly once. Keep groceryDescription under 120 characters.`;
+
 const MEAL_SUGGESTION_TIMEOUT_MS = 7000;
+const SHOPPING_LIST_TIMEOUT_MS = 12000;
 
 const ASSISTANT_SYSTEM = `You are a concise metabolic health coach assistant for the Metabolic app.
 Answer using the user's live program data when relevant. Be practical and specific.
@@ -321,6 +365,102 @@ function parseMealSuggestionResponse(text: string): MealSuggestionResult {
   throw result.error;
 }
 
+function normalizeEnrichedShoppingListItem(parsed: z.infer<typeof enrichedShoppingListItemSchema>): EnrichedShoppingListItem {
+  return {
+    id: parsed.id,
+    groceryDescription: parsed.groceryDescription.trim(),
+    groceryCategory: parsed.groceryCategory.trim(),
+    storeLocation: parsed.storeLocation?.trim() || null,
+    notes: parsed.notes?.trim() || null
+  };
+}
+
+function parseEnrichedShoppingListResponse(text: string, expectedIds: string[]): EnrichedShoppingListResult {
+  const parsed = parseModelJson(text);
+  const result = enrichedShoppingListResponseSchema.safeParse(parsed);
+  const items = result.success
+    ? result.data.items.map(normalizeEnrichedShoppingListItem)
+    : (() => {
+        const looseItems = Array.isArray(parsed?.items) ? parsed.items : [];
+        const normalized: EnrichedShoppingListItem[] = [];
+        for (const item of looseItems) {
+          const parsedItem = enrichedShoppingListItemSchema.safeParse(item);
+          if (parsedItem.success) normalized.push(normalizeEnrichedShoppingListItem(parsedItem.data));
+        }
+        return normalized;
+      })();
+
+  if (!items.length) {
+    throw result.success ? new Error('Model returned no shopping list items') : result.error;
+  }
+
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const ordered = expectedIds.map((id) => {
+    const item = byId.get(id);
+    if (!item) {
+      throw new Error(`Model returned ${byId.size} of ${expectedIds.length} shopping list items`);
+    }
+    return item;
+  });
+
+  return {
+    intro:
+      (result.success ? result.data.intro?.trim() : parsed?.intro?.trim()) ||
+      'Here is a grocery-friendly version of your planned foods.',
+    items: ordered
+  };
+}
+
+function mockGroceryDescription(item: ShoppingListInputItem, storeName: string | null): EnrichedShoppingListItem {
+  const lower = item.name.toLowerCase();
+  const qty = item.quantity;
+  const unit = item.unit.toLowerCase();
+  let groceryDescription = `${qty} ${item.unit} ${item.name}`;
+  let groceryCategory = 'Other';
+  let storeLocation: string | null = null;
+  let notes: string | null = null;
+
+  if (/egg/.test(lower)) {
+    groceryDescription = `${Math.max(1, Math.ceil(qty / 2))} dozen eggs`;
+    groceryCategory = 'Dairy & Eggs';
+    storeLocation = storeName ? 'Dairy / Aisle 16' : null;
+  } else if (/chicken|turkey|beef|steak|salmon|fish|shrimp|pork/.test(lower)) {
+    const pounds = Math.max(0.5, Math.ceil((unit.includes('serv') ? qty * 0.25 : qty) * 2) / 2);
+    groceryDescription = `${pounds} lb ${item.name}`;
+    groceryCategory = /fish|salmon|shrimp/.test(lower) ? 'Meat & Seafood' : 'Meat & Seafood';
+    storeLocation = storeName ? 'Meat & Seafood counter' : null;
+  } else if (/rice|oats|pasta|quinoa|bean|lentil/.test(lower)) {
+    groceryDescription = `${Math.max(1, Math.ceil(qty))} ${/rice|oats|pasta|quinoa/.test(lower) ? 'lb bag' : 'can(s)'} ${item.name}`;
+    groceryCategory = 'Pantry';
+    storeLocation = storeName ? 'Pantry / Aisle 4' : null;
+  } else if (/spinach|lettuce|broccoli|asparagus|pepper|tomato|onion|garlic|avocado|banana|apple|berry|fruit|veget/.test(lower)) {
+    groceryDescription = /banana|apple|avocado|onion|garlic/.test(lower)
+      ? `${Math.max(1, Math.ceil(qty))} ${item.name}`
+      : `${Math.max(1, Math.ceil(qty))} ${/spinach|lettuce/.test(lower) ? 'bag/bunch' : 'lb'} ${item.name}`;
+    groceryCategory = 'Produce';
+    storeLocation = storeName ? 'Produce section' : null;
+  } else if (/milk|yogurt|cheese|butter|cream/.test(lower)) {
+    groceryDescription = `${Math.max(1, Math.ceil(qty))} ${/cheese/.test(lower) ? 'package' : 'carton'} ${item.name}`;
+    groceryCategory = 'Dairy & Eggs';
+    storeLocation = storeName ? 'Dairy / Aisle 16' : null;
+  } else if (/bread|tortilla|wrap|bun/.test(lower)) {
+    groceryDescription = `${Math.max(1, Math.ceil(qty))} package ${item.name}`;
+    groceryCategory = 'Bakery';
+    storeLocation = storeName ? 'Bakery / Aisle 2' : null;
+  } else if (unit.includes('serv')) {
+    groceryDescription = `${Math.max(1, Math.ceil(qty))} grocery portion(s) ${item.name}`;
+    notes = 'Estimated from planned servings.';
+  }
+
+  return {
+    id: item.id,
+    groceryDescription,
+    groceryCategory,
+    storeLocation,
+    notes
+  };
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
@@ -337,7 +477,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
   });
 }
 
-class MockAiProvider implements AiProvider {
+export class MockAiProvider implements AiProvider {
   async lookupFood(input: string): Promise<FoodEstimate[]> {
     const lines = splitFoodLines(input);
     const items = lines.length ? lines : [input.trim()];
@@ -537,6 +677,16 @@ class MockAiProvider implements AiProvider {
     };
   }
 
+  async enrichShoppingList(items: ShoppingListInputItem[], storeName: string | null = null): Promise<EnrichedShoppingListResult> {
+    const intro = storeName
+      ? `Grocery list with approximate ${storeName} aisle hints. Layouts vary by location.`
+      : 'Grocery-friendly amounts based on your planned foods.';
+    return {
+      intro,
+      items: items.map((item) => mockGroceryDescription(item, storeName))
+    };
+  }
+
   async chat(messages: ChatMessage[], context: string, channel: ChatChannel = 'web'): Promise<string> {
     const last = messages.at(-1)?.content.toLowerCase() ?? '';
     const suffix = channel === 'sms' ? ' (mock SMS — set AI_PROVIDER=gemini.)' : ' (mock — set AI_PROVIDER=gemini.)';
@@ -697,6 +847,33 @@ ${input.trim()}`;
         } catch {
           throw wrapAiError(error, 'meal suggestions');
         }
+      }
+    }
+  }
+
+  async enrichShoppingList(items: ShoppingListInputItem[], storeName: string | null = null): Promise<EnrichedShoppingListResult> {
+    const expectedIds = items.map((item) => item.id);
+    const storeLine = storeName ? `Store: ${storeName}` : 'Store: not specified';
+    const prompt = `${SHOPPING_LIST_PROMPT}
+
+${storeLine}
+
+Planned items JSON:
+${JSON.stringify(items)}`;
+
+    try {
+      const result = await withTimeout(this.foodModel().generateContent(prompt), SHOPPING_LIST_TIMEOUT_MS, 'Shopping list');
+      return parseEnrichedShoppingListResponse(result.response.text(), expectedIds);
+    } catch (error) {
+      try {
+        const retry = await withTimeout(
+          this.foodModel().generateContent(`${prompt}\n\nImportant: respond with valid JSON only and include every input id exactly once.`),
+          SHOPPING_LIST_TIMEOUT_MS,
+          'Shopping list retry'
+        );
+        return parseEnrichedShoppingListResponse(retry.response.text(), expectedIds);
+      } catch (retryError) {
+        throw wrapAiError(retryError, 'shopping list');
       }
     }
   }

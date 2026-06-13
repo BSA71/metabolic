@@ -27,6 +27,30 @@ export type ReviewFood = AdminFood & {
 };
 export type MealItem = { id: string; type: 'PLANNED' | 'ACTUAL'; linkedPlannedItemId?: string | null; foodId?: string | null; nameSnapshot: string; quantity: number; unit: string; calories: number; protein: number; carbs: number; fat: number };
 export type Meal = { id: string; mealNumber: number; name: string; plannedTime?: string; status: string; plannedCalories: number; plannedProtein: number; plannedCarbs: number; plannedFat: number; actualCalories: number; actualProtein: number; actualCarbs: number; actualFat: number; items: MealItem[] };
+export type ShoppingListItem = { name: string; unit: string; quantity: number; occurrenceCount: number };
+export type GroceryListItem = {
+  id: string;
+  plannedName: string;
+  plannedQuantity: number;
+  plannedUnit: string;
+  occurrenceCount: number;
+  groceryDescription: string;
+  groceryCategory: string;
+  storeLocation: string | null;
+  notes: string | null;
+};
+export type GroceryListSection = { title: string; items: GroceryListItem[] };
+export type ShoppingListResult = {
+  startDate: string;
+  endDate: string;
+  plannedDayCount: number;
+  itemCount: number;
+  storeName: string | null;
+  intro: string | null;
+  enriched: boolean;
+  sections: GroceryListSection[];
+  note: string;
+};
 export type ExerciseCatalogItem = {
   id: string;
   name: string;

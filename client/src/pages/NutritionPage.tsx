@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LayoutTemplate } from 'lucide-react';
+import { LayoutTemplate, ShoppingCart } from 'lucide-react';
 import { api, isFuture, isToday, todayKey } from '../services/api';
 import { AddExtraFoodButton } from '../components/gamification/AddExtraFoodButton';
 import type { Meal, NutritionPlanTemplateSummary } from '../types';
@@ -9,6 +9,7 @@ import { WeekDateStrip } from '../components/nutrition/WeekDateStrip';
 import { EditMealPlanDrawer } from '../components/nutrition/EditMealPlanDrawer';
 import { AiFoodLookupDrawer } from '../components/nutrition/AiFoodLookupDrawer';
 import { ApplyTemplateModal } from '../components/nutrition/ApplyTemplateModal';
+import { ShoppingListDrawer } from '../components/nutrition/ShoppingListDrawer';
 import { Button } from '../components/ui/Button';
 
 function dateFromParams(params: URLSearchParams) {
@@ -25,6 +26,7 @@ export function NutritionPage() {
   const [editMode, setEditMode] = useState<'PLANNED' | 'ACTUAL'>('PLANNED');
   const [aiState, setAiState] = useState<{ mealId: string; itemType: 'PLANNED' | 'ACTUAL' }>();
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [shoppingListOpen, setShoppingListOpen] = useState(false);
   const [defaultTemplate, setDefaultTemplate] = useState<NutritionPlanTemplateSummary | null>(null);
 
   const load = useCallback(async (date: string) => {
@@ -119,10 +121,16 @@ export function NutritionPage() {
         selectedDate={selectedDate}
         onSelectDate={selectDate}
         endAction={
-          <Button type="button" variant="secondary" onClick={() => setTemplateModalOpen(true)}>
-            <LayoutTemplate className="mr-1 inline h-4 w-4" />
-            Use template
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="secondary" onClick={() => setShoppingListOpen(true)}>
+              <ShoppingCart className="mr-1 inline h-4 w-4" />
+              Shopping list
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setTemplateModalOpen(true)}>
+              <LayoutTemplate className="mr-1 inline h-4 w-4" />
+              Use template
+            </Button>
+          </div>
         }
       />
 
@@ -187,6 +195,8 @@ export function NutritionPage() {
         onClose={() => setTemplateModalOpen(false)}
         onApplied={() => load(selectedDate)}
       />
+
+      <ShoppingListDrawer open={shoppingListOpen} anchorDate={selectedDate} onClose={() => setShoppingListOpen(false)} />
     </div>
   );
 }
