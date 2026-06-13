@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { UsersRound } from 'lucide-react';
 import { api, todayKey } from '../services/api';
-import type { CoachClient, Dashboard, ExercisePlanTemplateSummary, NutritionPlanTemplateSummary } from '../types';
+import type { ClientGroup, CoachClient, Dashboard, ExercisePlanTemplateSummary, NutritionPlanTemplateSummary } from '../types';
 import type { GamificationDashboard } from '../types/gamification';
+import { ClientGroupsDrawer } from '../components/coach/ClientGroupsDrawer';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 
@@ -26,6 +28,9 @@ function latestWeight(client: CoachClient) {
 
 export function CoachPage() {
   const [clients, setClients] = useState<CoachClient[]>([]);
+  const [clientGroups, setClientGroups] = useState<ClientGroup[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [groupsOpen, setGroupsOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [engagement, setEngagement] = useState<GamificationDashboard | null>(null);
@@ -42,10 +47,27 @@ export function CoachPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const selectedClient = useMemo(
-    () => clients.find((client) => client.id === selectedClientId) ?? clients[0],
-    [clients, selectedClientId]
+  const selectedGroup = useMemo(
+    () => clientGroups.find((group) => group.id === selectedGroupId) ?? null,
+    [clientGroups, selectedGroupId]
   );
+
+  const visibleClients = useMemo(() => {
+    if (!selectedGroup) return clients;
+    const memberIds = new Set(selectedGroup.memberIds);
+    return clients.filter((client) => memberIds.has(client.id));
+  }, [clients, selectedGroup]);
+
+  const selectedClient = useMemo(
+    () => visibleClients.find((client) => client.id === selectedClientId) ?? visibleClients[0],
+    [visibleClients, selectedClientId]
+  );
+
+  const loadGroups = useCallback(async () => {
+    const groupRows = await api<ClientGroup[]>('/api/coach/client-groups');
+    setClientGroups(groupRows);
+    setSelectedGroupId((current) => (current && groupRows.some((group) => group.id === current) ? current : ''));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,14 +78,19 @@ export function CoachPage() {
         api<NutritionPlanTemplateSummary[]>('/api/coach/nutrition-templates'),
         api<ExercisePlanTemplateSummary[]>('/api/coach/exercise-templates')
       ]);
-      const coachSettings = await api<CoachSettings>('/api/coach/settings');
+      const [coachSettings, groupRows] = await Promise.all([
+        api<CoachSettings>('/api/coach/settings'),
+        api<ClientGroup[]>('/api/coach/client-groups').catch(() => [] as ClientGroup[])
+      ]);
       setClients(clientRows);
+      setClientGroups(groupRows);
       setNutritionTemplates(nutritionRows);
       setExerciseTemplates(exerciseRows);
       setCoachCodeDraft(coachSettings.coachCode ?? '');
       setDefaultNutritionTemplateId(coachSettings.defaultNutritionTemplateId ?? '');
       setDefaultExerciseTemplateId(coachSettings.defaultExerciseTemplateId ?? '');
       setSelectedClientId((current) => current || clientRows[0]?.id || '');
+      setSelectedGroupId((current) => (current && groupRows.some((group) => group.id === current) ? current : ''));
       setNutritionTemplateId((current) => current || nutritionRows[0]?.id || '');
       setExerciseTemplateId((current) => current || exerciseRows[0]?.id || '');
     } catch (err) {
@@ -99,6 +126,12 @@ export function CoachPage() {
   useEffect(() => {
     void loadDashboard(selectedClient?.id ?? '');
   }, [loadDashboard, selectedClient?.id]);
+
+  useEffect(() => {
+    if (!selectedClientId) return;
+    if (visibleClients.some((client) => client.id === selectedClientId)) return;
+    setSelectedClientId(visibleClients[0]?.id ?? '');
+  }, [selectedClientId, visibleClients]);
 
   async function applyTemplate(kind: 'nutrition' | 'exercise') {
     if (!selectedClient) return;
@@ -189,21 +222,54 @@ export function CoachPage() {
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-bold">Assigned users</h2>
-                  <p className="text-sm text-app-text-muted">{clients.length} active assignment{clients.length === 1 ? '' : 's'}</p>
+                  <p className="text-sm text-app-text-muted">
+                    {visibleClients.length} of {clients.length} client{clients.length === 1 ? '' : 's'}
+                    {selectedGroup ? ` in ${selectedGroup.name}` : ''}
+                  </p>
                 </div>
-                <select
-                  className="rounded-xl border border-app-border bg-app-surface px-3 py-2 text-sm"
-                  value={selectedClient?.id ?? ''}
-                  onChange={(event) => setSelectedClientId(event.target.value)}
-                >
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {clientName(client)}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    className="rounded-xl border border-app-border bg-app-surface px-3 py-2 text-sm"
+                    value={selectedGroupId}
+                    onChange={(event) => setSelectedGroupId(event.target.value)}
+                  >
+                    <option value="">All clients</option>
+                    {clientGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name} ({group.memberCount})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    aria-label="Manage client groups"
+                    title="Manage client groups"
+                    className="inline-flex min-h-[2.5rem] items-center justify-center rounded-xl px-3.5 py-2.5 text-app-text transition hover:bg-app-muted"
+                    onClick={() => setGroupsOpen(true)}
+                  >
+                    <UsersRound className="h-[1.375rem] w-[1.375rem]" />
+                  </button>
+                  <select
+                    className="rounded-xl border border-app-border bg-app-surface px-3 py-2 text-sm"
+                    value={selectedClient?.id ?? ''}
+                    onChange={(event) => setSelectedClientId(event.target.value)}
+                  >
+                    {visibleClients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {clientName(client)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
+              {visibleClients.length === 0 ? (
+                <p className="text-sm text-app-text-muted">
+                  {selectedGroup
+                    ? `No clients in ${selectedGroup.name} yet. Use the groups icon to add members.`
+                    : 'No assigned users match this filter.'}
+                </p>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
                   <thead>
@@ -216,7 +282,7 @@ export function CoachPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {clients.map((client) => (
+                    {visibleClients.map((client) => (
                       <tr
                         key={client.id}
                         className={`cursor-pointer border-b border-app-border/60 last:border-0 ${
@@ -240,6 +306,7 @@ export function CoachPage() {
                   </tbody>
                 </table>
               </div>
+              )}
             </Card>
 
             {selectedClient && (
@@ -401,6 +468,14 @@ export function CoachPage() {
           </div>
         </div>
       )}
+
+      <ClientGroupsDrawer
+        open={groupsOpen}
+        clients={clients}
+        groups={clientGroups}
+        onClose={() => setGroupsOpen(false)}
+        onGroupsChange={loadGroups}
+      />
     </div>
   );
 }

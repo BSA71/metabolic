@@ -180,3 +180,127 @@ async function ensureTemplateAvailableToCoach(kind: 'nutrition' | 'exercise', co
   if (template.visibility === Visibility.GLOBAL || template.createdById === coachId) return;
   throw new Error('Template not available');
 }
+
+function mapClientGroup(
+  group: {
+    id: string;
+    name: string;
+    description: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    members: { userId: string }[];
+  },
+  coachClientIds: Set<string>
+) {
+  const memberIds = group.members.map((member) => member.userId).filter((userId) => coachClientIds.has(userId));
+  return {
+    id: group.id,
+    name: group.name,
+    description: group.description,
+    memberIds,
+    memberCount: memberIds.length,
+    createdAt: group.createdAt.toISOString(),
+    updatedAt: group.updatedAt.toISOString()
+  };
+}
+
+async function getCoachClientIds(coachId: string) {
+  const assignments = await prisma.coachAssignment.findMany({
+    where: { coachId },
+    select: { userId: true }
+  });
+  return new Set(assignments.map((assignment) => assignment.userId));
+}
+
+async function requireCoachOwnedGroup(coachId: string, groupId: string) {
+  const group = await prisma.clientGroup.findFirst({
+    where: { id: groupId, coachId },
+    include: { members: { select: { userId: true } } }
+  });
+  if (!group) throw new Error('Client group not found');
+  return group;
+}
+
+export async function listCoachClientGroups(coachId: string) {
+  const coachClientIds = await getCoachClientIds(coachId);
+  const groups = await prisma.clientGroup.findMany({
+    where: { coachId },
+    include: { members: { select: { userId: true } } },
+    orderBy: [{ name: 'asc' }, { createdAt: 'asc' }]
+  });
+  return groups.map((group) => mapClientGroup(group, coachClientIds));
+}
+
+export async function createCoachClientGroup(
+  coachId: string,
+  data: { name: string; description?: string | null; memberIds?: string[] }
+) {
+  const name = data.name.trim();
+  if (!name) throw new Error('Group name is required');
+
+  const coachClientIds = await getCoachClientIds(coachId);
+  const memberIds = [...new Set(data.memberIds ?? [])];
+  if (memberIds.some((userId) => !coachClientIds.has(userId))) {
+    throw new Error('One or more users are not assigned to this coach');
+  }
+
+  const group = await prisma.clientGroup.create({
+    data: {
+      coachId,
+      name,
+      description: data.description?.trim() || null,
+      members: memberIds.length ? { create: memberIds.map((userId) => ({ userId })) } : undefined
+    },
+    include: { members: { select: { userId: true } } }
+  });
+  return mapClientGroup(group, coachClientIds);
+}
+
+export async function updateCoachClientGroup(
+  coachId: string,
+  groupId: string,
+  data: { name?: string; description?: string | null }
+) {
+  await requireCoachOwnedGroup(coachId, groupId);
+  const coachClientIds = await getCoachClientIds(coachId);
+  const name = data.name === undefined ? undefined : data.name.trim();
+  if (name === '') throw new Error('Group name is required');
+
+  const group = await prisma.clientGroup.update({
+    where: { id: groupId },
+    data: {
+      name,
+      description: data.description === undefined ? undefined : data.description?.trim() || null
+    },
+    include: { members: { select: { userId: true } } }
+  });
+  return mapClientGroup(group, coachClientIds);
+}
+
+export async function deleteCoachClientGroup(coachId: string, groupId: string) {
+  await requireCoachOwnedGroup(coachId, groupId);
+  await prisma.clientGroup.delete({ where: { id: groupId } });
+}
+
+export async function setCoachClientGroupMembers(coachId: string, groupId: string, memberIds: string[]) {
+  await requireCoachOwnedGroup(coachId, groupId);
+  const coachClientIds = await getCoachClientIds(coachId);
+  const uniqueMemberIds = [...new Set(memberIds)];
+  if (uniqueMemberIds.some((userId) => !coachClientIds.has(userId))) {
+    throw new Error('One or more users are not assigned to this coach');
+  }
+
+  const group = await prisma.$transaction(async (tx) => {
+    await tx.clientGroupMember.deleteMany({ where: { groupId } });
+    if (uniqueMemberIds.length) {
+      await tx.clientGroupMember.createMany({
+        data: uniqueMemberIds.map((userId) => ({ groupId, userId }))
+      });
+    }
+    return tx.clientGroup.findUniqueOrThrow({
+      where: { id: groupId },
+      include: { members: { select: { userId: true } } }
+    });
+  });
+  return mapClientGroup(group, coachClientIds);
+}

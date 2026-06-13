@@ -183,6 +183,8 @@ model User {
   smsMessages SmsMessage[]
   coachAssignments CoachAssignment[] @relation("CoachAssignments")
   userAssignments CoachAssignment[] @relation("UserAssignments")
+  clientGroups ClientGroup[] @relation("CoachClientGroups")
+  clientGroupMemberships ClientGroupMember[]
   mealTemplates MealTemplate[]
   nutritionPlanTemplatesCreated NutritionPlanTemplate[] @relation("NutritionPlanTemplateCreator")
   exerciseTemplatesCreated ExerciseTemplate[] @relation("ExerciseTemplateCreator")
@@ -228,6 +230,29 @@ model CoachAssignment {
   user User @relation("UserAssignments", fields: [userId], references: [id], onDelete: Cascade)
   @@unique([coachId, userId])
   @@unique([userId])
+}
+
+model ClientGroup {
+  id String @id @default(cuid())
+  coachId String
+  name String
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  coach User @relation("CoachClientGroups", fields: [coachId], references: [id], onDelete: Cascade)
+  members ClientGroupMember[]
+  @@index([coachId])
+}
+
+model ClientGroupMember {
+  id String @id @default(cuid())
+  groupId String
+  userId String
+  createdAt DateTime @default(now())
+  group ClientGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([groupId, userId])
+  @@index([userId])
 }
 
 model Program {
