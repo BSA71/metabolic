@@ -4,6 +4,7 @@ import { requireAuth } from '../auth/requireAuth.js';
 import { addMealItem, copyMealFromPreviousDay, createMeal, deleteMealItem, getMealsForDate, markMealEatenAsPlanned, setPlannedItemLogged, updateMealItem } from '../services/nutritionService.js';
 import { ensureDailyLogByUserId } from '../services/dailyLogService.js';
 import { applyTemplateToDailyLog, getProgramDefaultTemplate, listTemplatesForUser } from '../services/nutritionTemplateService.js';
+import { getGroceryShoppingList } from '../services/shoppingListService.js';
 import { prisma } from '../db/prisma.js';
 
 const mealUpdateSchema = z
@@ -54,6 +55,21 @@ export async function nutritionRoutes(app: FastifyInstance) {
     return { ok: true };
   });
   app.delete('/api/meal-items/:id', { preHandler: requireAuth }, async (request) => deleteMealItem(request.appUser!.id, (request.params as { id: string }).id));
+
+  app.get('/api/nutrition/shopping-list', { preHandler: requireAuth }, async (request, reply) => {
+    const query = z
+      .object({
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        storeName: z.string().trim().min(1).max(120).optional()
+      })
+      .parse(request.query);
+    try {
+      return await getGroceryShoppingList(request.appUser!.id, query.startDate, query.endDate, query.storeName ?? null);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to build shopping list' });
+    }
+  });
 
   app.get('/api/nutrition-templates', { preHandler: requireAuth }, async () => listTemplatesForUser());
 
