@@ -9,7 +9,15 @@ import { ExerciseCopyMenu } from '../components/exercise/ExerciseCopyMenu';
 import { AddExerciseDrawer } from '../components/exercise/AddExerciseDrawer';
 import { EditExerciseDrawer } from '../components/exercise/EditExerciseDrawer';
 import { ApplyExerciseTemplateModal } from '../components/exercise/ApplyExerciseTemplateModal';
+import { PlanPrintMenu } from '../components/export/PlanPrintMenu';
 import { Button } from '../components/ui/Button';
+import {
+  fetchExercisesForDates,
+  formatWeekExportLabel,
+  getWeekRange,
+  weekHasExercises
+} from '../utils/planExportData';
+import { printExercisePlan, printExerciseWeekPlan } from '../utils/printExercisePlan';
 
 function dateFromParams(params: URLSearchParams) {
   const date = params.get('date');
@@ -27,6 +35,8 @@ export function ExercisePage() {
   const [copyDate, setCopyDate] = useState('');
   const [copying, setCopying] = useState(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [printing, setPrinting] = useState<'day' | 'week' | null>(null);
+  const [printError, setPrintError] = useState<string | null>(null);
   const [defaultTemplate, setDefaultTemplate] = useState<ExercisePlanTemplateSummary | null>(null);
 
   const load = useCallback(async (date: string) => {
@@ -95,6 +105,37 @@ export function ExercisePage() {
   const doneCount = exercises.filter((item) => item.status === 'DONE').length;
   const progress = exercises.length ? Math.round((doneCount / exercises.length) * 100) : 0;
 
+  function handlePrintDay() {
+    setPrintError(null);
+    if (!exercises.length) {
+      setPrintError('No exercises planned for this day.');
+      return;
+    }
+    try {
+      printExercisePlan(exercises, selectedDate);
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : 'Could not open print view.');
+    }
+  }
+
+  async function handlePrintWeek() {
+    setPrintError(null);
+    setPrinting('week');
+    try {
+      const week = getWeekRange(selectedDate);
+      const days = await fetchExercisesForDates(week.dates);
+      if (!weekHasExercises(days)) {
+        setPrintError('No exercises planned for this week.');
+        return;
+      }
+      printExerciseWeekPlan(days, formatWeekExportLabel(week.startDate));
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : 'Could not open print view.');
+    } finally {
+      setPrinting(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-4">
@@ -106,10 +147,13 @@ export function ExercisePage() {
         selectedDate={selectedDate}
         onSelectDate={selectDate}
         endAction={
-          <Button type="button" variant="secondary" onClick={() => setTemplateModalOpen(true)}>
+          <div className="flex gap-2">
+            <PlanPrintMenu printing={printing} onPrintDay={handlePrintDay} onPrintWeek={handlePrintWeek} />
+            <Button type="button" variant="secondary" onClick={() => setTemplateModalOpen(true)}>
             <LayoutTemplate className="mr-1 inline h-4 w-4" />
-            Use template
-          </Button>
+            Templates
+            </Button>
+          </div>
         }
       />
 
@@ -147,8 +191,8 @@ export function ExercisePage() {
         />
       </div>
 
-      {(loadError || actionError) && (
-        <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{actionError ?? loadError}</div>
+      {(loadError || actionError || printError) && (
+        <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{printError ?? actionError ?? loadError}</div>
       )}
 
       <ExerciseChecklist

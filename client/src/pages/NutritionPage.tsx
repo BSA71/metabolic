@@ -10,7 +10,15 @@ import { EditMealPlanDrawer } from '../components/nutrition/EditMealPlanDrawer';
 import { AiFoodLookupDrawer } from '../components/nutrition/AiFoodLookupDrawer';
 import { ApplyTemplateModal } from '../components/nutrition/ApplyTemplateModal';
 import { ShoppingListDrawer } from '../components/nutrition/ShoppingListDrawer';
+import { PlanPrintMenu } from '../components/export/PlanPrintMenu';
 import { Button } from '../components/ui/Button';
+import {
+  fetchMealsForDates,
+  formatWeekExportLabel,
+  getWeekRange,
+  weekHasMeals
+} from '../utils/planExportData';
+import { printNutritionPlan, printNutritionWeekPlan } from '../utils/printNutritionPlan';
 
 function dateFromParams(params: URLSearchParams) {
   const date = params.get('date');
@@ -27,6 +35,8 @@ export function NutritionPage() {
   const [aiState, setAiState] = useState<{ mealId: string; itemType: 'PLANNED' | 'ACTUAL' }>();
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [shoppingListOpen, setShoppingListOpen] = useState(false);
+  const [printing, setPrinting] = useState<'day' | 'week' | null>(null);
+  const [printError, setPrintError] = useState<string | null>(null);
   const [defaultTemplate, setDefaultTemplate] = useState<NutritionPlanTemplateSummary | null>(null);
 
   const load = useCallback(async (date: string) => {
@@ -110,6 +120,37 @@ export function NutritionPage() {
     return `${label}: ${Math.round(calories)} kcal · ${Math.round(protein)}g protein · ${Math.round(carbs)}g carbs · ${Math.round(fat)}g fat`;
   }
 
+  function handlePrintDay() {
+    setPrintError(null);
+    if (!meals.length) {
+      setPrintError('No meals planned for this day.');
+      return;
+    }
+    try {
+      printNutritionPlan(meals, selectedDate);
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : 'Could not open print view.');
+    }
+  }
+
+  async function handlePrintWeek() {
+    setPrintError(null);
+    setPrinting('week');
+    try {
+      const week = getWeekRange(selectedDate);
+      const days = await fetchMealsForDates(week.dates);
+      if (!weekHasMeals(days)) {
+        setPrintError('No meals planned for this week.');
+        return;
+      }
+      printNutritionWeekPlan(days, formatWeekExportLabel(week.startDate));
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : 'Could not open print view.');
+    } finally {
+      setPrinting(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -122,17 +163,28 @@ export function NutritionPage() {
         onSelectDate={selectDate}
         endAction={
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" onClick={() => setShoppingListOpen(true)}>
-              <ShoppingCart className="mr-1 inline h-4 w-4" />
-              Shopping list
+            <Button
+              type="button"
+              variant="secondary"
+              aria-label="Shopping list"
+              title="Shopping list"
+              className="inline-flex min-h-[2.5rem] items-center justify-center px-3.5 py-2.5"
+              onClick={() => setShoppingListOpen(true)}
+            >
+              <ShoppingCart className="h-[1.375rem] w-[1.375rem]" />
             </Button>
+            <PlanPrintMenu printing={printing} onPrintDay={handlePrintDay} onPrintWeek={handlePrintWeek} />
             <Button type="button" variant="secondary" onClick={() => setTemplateModalOpen(true)}>
               <LayoutTemplate className="mr-1 inline h-4 w-4" />
-              Use template
+              Templates
             </Button>
           </div>
         }
       />
+
+      {printError && (
+        <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{printError}</div>
+      )}
 
       {defaultTemplate && (
         <p className="text-sm text-slate-500">

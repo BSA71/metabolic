@@ -1,13 +1,7 @@
 import type { ShoppingListResult } from '../types';
+import { escapeHtml } from './exportFormat';
+import { printHtmlDocument } from './printDocument';
 import { formatPlannedMealContext } from './shoppingListFormat';
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function formatRangeLabel(result: ShoppingListResult) {
   if (result.startDate === result.endDate) return result.startDate;
@@ -170,39 +164,5 @@ function buildShoppingListHtml(result: ShoppingListResult) {
 
 export function printShoppingList(result: ShoppingListResult) {
   if (!result.itemCount) return;
-
-  const html = buildShoppingListHtml(result);
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('title', 'Shopping list print preview');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.style.opacity = '0';
-  iframe.style.pointerEvents = 'none';
-  document.body.appendChild(iframe);
-
-  const frameWindow = iframe.contentWindow;
-  const doc = iframe.contentDocument ?? frameWindow?.document;
-  if (!doc || !frameWindow) {
-    iframe.remove();
-    throw new Error('Could not prepare print view.');
-  }
-
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  const runPrint = () => {
-    try {
-      frameWindow.focus();
-      frameWindow.print();
-    } finally {
-      window.setTimeout(() => iframe.remove(), 1000);
-    }
-  };
-
-  window.setTimeout(runPrint, 100);
+  printHtmlDocument(buildShoppingListHtml(result), 'Shopping list print preview');
 }
