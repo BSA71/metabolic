@@ -81,3 +81,36 @@ textarea {
 #root {
   min-height: 100vh;
 }
+
+@media print {
+  html,
+  body,
+  #root {
+    background: #fff !important;
+    color: #111827 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .export-toolbar {
+    display: none !important;
+  }
+
+  .export-page {
+    background: #fff !important;
+    color: #111827 !important;
+  }
+
+  .export-content {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .export-section {
+    break-inside: avoid;
+  }
+
+  @page {
+    margin: 0.5in;
+  }
+}

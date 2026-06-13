@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import type { User } from 'firebase/auth';
 import { listenForAuth } from './services/auth';
 import { api } from './services/api';
@@ -26,6 +26,9 @@ import { GamificationPage } from './pages/GamificationPage';
 import { JourneyPage } from './pages/JourneyPage';
 import { BadgesPage } from './pages/BadgesPage';
 import { BaselineSnapshotPage } from './pages/BaselineSnapshotPage';
+import { ExerciseExportPage } from './pages/export/ExerciseExportPage';
+import { NutritionExportPage } from './pages/export/NutritionExportPage';
+import { ShoppingListExportPage } from './pages/export/ShoppingListExportPage';
 import { isAdminRole, isCoachRole } from './utils/roles';
 
 function LoadingScreen() {
@@ -38,34 +41,38 @@ function LoadingScreen() {
 
 function Protected({
   firebaseUser,
-  appUser,
+  authChecked,
   onboardingChecked,
   needsSetup
 }: {
   firebaseUser: User | null;
-  appUser: AppUser | null;
+  authChecked: boolean;
   onboardingChecked: boolean;
   needsSetup: boolean;
 }) {
+  if (!authChecked) return <LoadingScreen />;
   if (!firebaseUser) return <Navigate to="/login" replace />;
   if (!onboardingChecked) return <LoadingScreen />;
   if (needsSetup) return <Navigate to="/setup" replace />;
-  return <AppShell user={appUser} />;
+  return <Outlet />;
 }
 
 function SetupRoute({
   firebaseUser,
   appUser,
+  authChecked,
   onboardingChecked,
   needsSetup,
   onComplete
 }: {
   firebaseUser: User | null;
   appUser: AppUser | null;
+  authChecked: boolean;
   onboardingChecked: boolean;
   needsSetup: boolean;
   onComplete: () => void;
 }) {
+  if (!authChecked) return <LoadingScreen />;
   if (!firebaseUser) return <Navigate to="/login" replace />;
   if (!onboardingChecked) return <LoadingScreen />;
   if (!needsSetup) return <Navigate to="/" replace />;
@@ -101,6 +108,7 @@ function CoachRoute({ appUser }: { appUser: AppUser | null }) {
 
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
@@ -120,6 +128,7 @@ export default function App() {
     () =>
       listenForAuth(async (user) => {
         setFirebaseUser(user);
+        setAuthChecked(true);
         if (user) {
           try {
             const me = await api<{ user: AppUser }>('/api/me');
@@ -157,6 +166,7 @@ export default function App() {
             <SetupRoute
               firebaseUser={firebaseUser}
               appUser={appUser}
+              authChecked={authChecked}
               onboardingChecked={onboardingChecked}
               needsSetup={needsSetup}
               onComplete={() => {
@@ -169,28 +179,33 @@ export default function App() {
           element={
             <Protected
               firebaseUser={firebaseUser}
-              appUser={appUser}
+              authChecked={authChecked}
               onboardingChecked={onboardingChecked}
               needsSetup={needsSetup}
             />
           }
         >
-          <Route index element={<DashboardPage user={appUser} />} />
-          <Route path="program" element={<ProgramPage />} />
-          <Route path="nutrition" element={<NutritionPage />} />
-          <Route path="exercise" element={<ExercisePage />} />
-          <Route path="progress" element={<ProgressPage />} />
-          <Route path="level-up" element={<GamificationPage />} />
-          <Route path="level-up/journey" element={<JourneyPage />} />
-          <Route path="level-up/badges" element={<BadgesPage />} />
-          <Route path="level-up/baseline" element={<BaselineSnapshotPage />} />
-          <Route path="assistant" element={<AssistantPage />} />
-          <Route path="coach" element={<CoachRoute appUser={appUser} />} />
-          <Route path="admin" element={<AdminRoute appUser={appUser} />} />
-          <Route path="admin/nutrition-templates" element={<AdminRoute appUser={appUser}><AdminNutritionTemplatesPage /></AdminRoute>} />
-          <Route path="admin/nutrition-templates/:id" element={<AdminRoute appUser={appUser}><AdminNutritionTemplateEditorPage /></AdminRoute>} />
-          <Route path="admin/exercise-templates" element={<AdminRoute appUser={appUser}><AdminExerciseTemplatesPage /></AdminRoute>} />
-          <Route path="admin/exercise-templates/:id" element={<AdminRoute appUser={appUser}><AdminExerciseTemplateEditorPage /></AdminRoute>} />
+          <Route path="nutrition/export" element={<NutritionExportPage />} />
+          <Route path="nutrition/shopping-list/export" element={<ShoppingListExportPage />} />
+          <Route path="exercise/export" element={<ExerciseExportPage />} />
+          <Route element={<AppShell user={appUser} />}>
+            <Route index element={<DashboardPage user={appUser} />} />
+            <Route path="program" element={<ProgramPage />} />
+            <Route path="nutrition" element={<NutritionPage />} />
+            <Route path="exercise" element={<ExercisePage />} />
+            <Route path="progress" element={<ProgressPage />} />
+            <Route path="level-up" element={<GamificationPage />} />
+            <Route path="level-up/journey" element={<JourneyPage />} />
+            <Route path="level-up/badges" element={<BadgesPage />} />
+            <Route path="level-up/baseline" element={<BaselineSnapshotPage />} />
+            <Route path="assistant" element={<AssistantPage />} />
+            <Route path="coach" element={<CoachRoute appUser={appUser} />} />
+            <Route path="admin" element={<AdminRoute appUser={appUser} />} />
+            <Route path="admin/nutrition-templates" element={<AdminRoute appUser={appUser}><AdminNutritionTemplatesPage /></AdminRoute>} />
+            <Route path="admin/nutrition-templates/:id" element={<AdminRoute appUser={appUser}><AdminNutritionTemplateEditorPage /></AdminRoute>} />
+            <Route path="admin/exercise-templates" element={<AdminRoute appUser={appUser}><AdminExerciseTemplatesPage /></AdminRoute>} />
+            <Route path="admin/exercise-templates/:id" element={<AdminRoute appUser={appUser}><AdminExerciseTemplateEditorPage /></AdminRoute>} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>
