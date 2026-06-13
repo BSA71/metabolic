@@ -187,3 +187,12 @@ export type CoachClient = {
     completionStatus: string;
   } | null;
 };
+export type ClientGroup = {
+  id: string;
+  name: string;
+  description: string | null;
+  memberIds: string[];
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+};

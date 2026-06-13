@@ -6,10 +6,15 @@ import { requireRole } from '../auth/requireRole.js';
 import {
   applyCoachExerciseTemplate,
   applyCoachNutritionTemplate,
+  createCoachClientGroup,
+  deleteCoachClientGroup,
   getCoachClientDashboard,
   getCoachClientEngagement,
   getCoachSettings,
+  listCoachClientGroups,
   listCoachClients,
+  setCoachClientGroupMembers,
+  updateCoachClientGroup,
   updateCoachSettings
 } from '../services/coachService.js';
 import {
@@ -111,6 +116,18 @@ const coachSettingsBody = z.object({
   defaultNutritionTemplateId: z.string().trim().min(1).nullable().optional(),
   defaultExerciseTemplateId: z.string().trim().min(1).nullable().optional()
 });
+const clientGroupCreateBody = z.object({
+  name: z.string().trim().min(1),
+  description: z.string().trim().nullable().optional(),
+  memberIds: z.array(z.string().trim().min(1)).optional()
+});
+const clientGroupUpdateBody = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    description: z.string().trim().nullable().optional()
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+const clientGroupMembersBody = z.object({ memberIds: z.array(z.string().trim().min(1)) });
 
 export async function coachRoutes(app: FastifyInstance) {
   app.get('/api/coach/settings', { preHandler: coachOnly }, async (request) => getCoachSettings(request.appUser!.id));
@@ -126,6 +143,53 @@ export async function coachRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/coach/users', { preHandler: coachOnly }, async (request) => listCoachClients(request.appUser!.id));
+
+  app.get('/api/coach/client-groups', { preHandler: coachOnly }, async (request) =>
+    listCoachClientGroups(request.appUser!.id)
+  );
+
+  app.post('/api/coach/client-groups', { preHandler: coachOnly }, async (request, reply) => {
+    const parsed = clientGroupCreateBody.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid group' });
+    try {
+      return await createCoachClientGroup(request.appUser!.id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to create group' });
+    }
+  });
+
+  app.patch('/api/coach/client-groups/:id', { preHandler: coachOnly }, async (request, reply) => {
+    const parsed = clientGroupUpdateBody.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid group' });
+    try {
+      return await updateCoachClientGroup(request.appUser!.id, (request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update group' });
+    }
+  });
+
+  app.delete('/api/coach/client-groups/:id', { preHandler: coachOnly }, async (request, reply) => {
+    try {
+      await deleteCoachClientGroup(request.appUser!.id, (request.params as { id: string }).id);
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to delete group' });
+    }
+  });
+
+  app.put('/api/coach/client-groups/:id/members', { preHandler: coachOnly }, async (request, reply) => {
+    const parsed = clientGroupMembersBody.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid members' });
+    try {
+      return await setCoachClientGroupMembers(
+        request.appUser!.id,
+        (request.params as { id: string }).id,
+        parsed.data.memberIds
+      );
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update members' });
+    }
+  });
 
   app.get('/api/coach/users/:userId/dashboard', { preHandler: coachOnly }, async (request, reply) => {
     try {
