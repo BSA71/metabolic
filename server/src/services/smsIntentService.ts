@@ -8,6 +8,7 @@ import { localDateKey, toDateKey } from '../utils/dates.js';
 import type { ChatMessage } from './aiService.js';
 import { lookupFoodFromImage, type FoodLookupResult } from './foodLookupService.js';
 import { env } from '../config/env.js';
+import { sendOutboundMessage } from './twilioOutboundService.js';
 import { ensureDailyLogByUserId } from './dailyLogService.js';
 
 export type SmsIntent =
@@ -316,32 +317,6 @@ function twilioMediaDownloadError(response: Response) {
   return new Error('Could not download the WhatsApp photo. Please resend it.');
 }
 
-async function sendWhatsAppMessage(phone: string, message: string) {
-  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_PHONE_NUMBER) {
-    throw new Error('Twilio outbound messaging is not configured.');
-  }
-
-  const params = new URLSearchParams({
-    From: env.TWILIO_PHONE_NUMBER.startsWith('whatsapp:') ? env.TWILIO_PHONE_NUMBER : `whatsapp:${env.TWILIO_PHONE_NUMBER}`,
-    To: `whatsapp:${phone}`,
-    Body: message
-  });
-  const token = Buffer.from(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${token}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: params
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Could not send WhatsApp response: ${detail.slice(0, 300)}`);
-  }
-}
-
 async function downloadSmsImage(media: SmsMedia) {
   let response: Response | null = null;
   for (const options of buildTwilioMediaFetchOptions(media)) {
@@ -467,9 +442,9 @@ async function processFoodPhotoInBackground(user: SmsUser, phone: string, media:
     data: { phone, userId: user.id, direction: 'OUTBOUND', message: response, response, status: 'PROCESSED' }
   });
   try {
-    await sendWhatsAppMessage(phone, response);
+    await sendOutboundMessage(phone, response);
   } catch (error) {
-    const detail = error instanceof Error ? error.message : 'Could not send WhatsApp response.';
+    const detail = error instanceof Error ? error.message : 'Could not send text message.';
     await prisma.smsMessage.update({ where: { id: outbound.id }, data: { status: 'FAILED', response: detail } });
   }
 }

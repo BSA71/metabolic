@@ -6,11 +6,47 @@ import { getTodayDashboard } from './dashboardService.js';
 import { getGamificationDashboard } from './gamificationService.js';
 import { applyTemplateToDailyLog } from './nutritionTemplateService.js';
 import { applyTemplateToDate } from './exerciseTemplateService.js';
+import { sendResultsReadyEmail } from './emailService.js';
+import { buildResultsReadyLinks, buildResultsReadySmsMessage } from './resultsReadyNotification.js';
+import { sendOutboundMessage, validateOutboundRecipient, isTwilioSenderPhone } from './twilioOutboundService.js';
+import { normalizePhone } from '../utils/phone.js';
+import { env } from '../config/env.js';
 
 export async function requireCoachClient(actor: { id: string; role: Role }, userId: string) {
   if (!(await canAccessUser(actor, userId))) {
     throw new Error('User is not assigned to this coach');
   }
+}
+
+async function loadLatestInboundPhones(userIds: string[]) {
+  if (!userIds.length) return new Map<string, string>();
+
+  const messages = await prisma.smsMessage.findMany({
+    where: { userId: { in: userIds }, direction: 'INBOUND' },
+    orderBy: { createdAt: 'desc' },
+    select: { userId: true, phone: true }
+  });
+
+  const byUser = new Map<string, string>();
+  for (const message of messages) {
+    if (message.userId && !byUser.has(message.userId)) {
+      byUser.set(message.userId, normalizePhone(message.phone));
+    }
+  }
+  return byUser;
+}
+
+function resolveClientMessagingPhone(profilePhone: string | null | undefined, inboundPhone?: string | null) {
+  const normalizedProfile = profilePhone?.trim() ? normalizePhone(profilePhone) : null;
+  const normalizedInbound = inboundPhone?.trim() ? normalizePhone(inboundPhone) : null;
+
+  if (normalizedProfile && !isTwilioSenderPhone(normalizedProfile)) {
+    return normalizedProfile;
+  }
+  if (normalizedInbound && !isTwilioSenderPhone(normalizedInbound)) {
+    return normalizedInbound;
+  }
+  return null;
 }
 
 export async function listCoachClients(coachId: string) {
@@ -38,18 +74,22 @@ export async function listCoachClients(coachId: string) {
     orderBy: [{ user: { firstName: 'asc' } }, { user: { lastName: 'asc' } }]
   });
 
+  const inboundPhones = await loadLatestInboundPhones(assignments.map((assignment) => assignment.user.id));
+
   return assignments.map((assignment) => {
     const user = assignment.user;
     const program = user.programs[0] ?? null;
     const weightMetric = program?.metrics.find((metric) => metric.metricType === 'WEIGHT') ?? null;
     const latestDailyLog = user.dailyLogs[0] ?? null;
     const latestProgressSnapshot = user.progressSnapshots[0] ?? null;
+    const textPhone = resolveClientMessagingPhone(user.phone, inboundPhones.get(user.id));
     return {
       id: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
       phone: user.phone,
+      textPhone,
       status: user.status,
       assignedAt: assignment.createdAt.toISOString(),
       activeProgram: program
@@ -136,6 +176,105 @@ export async function getCoachClientDashboard(actor: { id: string; role: Role },
 export async function getCoachClientEngagement(actor: { id: string; role: Role }, userId: string) {
   await requireCoachClient(actor, userId);
   return getGamificationDashboard(userId);
+}
+
+export async function sendCoachResultsReadyEmail(
+  actor: { id: string; role: Role; firstName: string; lastName: string },
+  userId: string
+) {
+  const { client, coachName, links } = await getCoachResultsNotificationContext(actor, userId);
+
+  await sendResultsReadyEmail({
+    to: client.email,
+    clientFirstName: client.firstName,
+    coachName,
+    links
+  });
+
+  return { sent: true, to: client.email };
+}
+
+export async function sendCoachResultsReadySms(
+  actor: { id: string; role: Role; firstName: string; lastName: string },
+  userId: string,
+  options?: { phone?: string; savePhone?: boolean }
+) {
+  const { client, coachName, links } = await getCoachResultsNotificationContext(actor, userId);
+  const inboundPhones = await loadLatestInboundPhones([userId]);
+  const resolvedPhone = resolveClientMessagingPhone(client.phone, inboundPhones.get(userId));
+
+  let phone: string | null;
+  if (options?.phone?.trim()) {
+    if (!options.savePhone) {
+      throw new Error('A custom phone number can only be provided when saving it to the client profile.');
+    }
+    phone = normalizePhone(options.phone);
+  } else {
+    phone = resolvedPhone;
+  }
+
+  if (!phone) {
+    throw new Error(
+      'This client does not have a phone number on file. Add one in Admin → Users or enter it when sending.'
+    );
+  }
+
+  validateOutboundRecipient(phone);
+
+  const message = buildResultsReadySmsMessage({
+    clientFirstName: client.firstName,
+    coachName,
+    links
+  });
+
+  try {
+    await sendOutboundMessage(phone, message);
+    if (options?.savePhone && !client.phone?.trim()) {
+      await prisma.user.update({ where: { id: userId }, data: { phone } });
+    }
+    await prisma.smsMessage.create({
+      data: {
+        phone,
+        userId,
+        direction: 'OUTBOUND',
+        message,
+        intent: 'RESULTS_READY',
+        response: message,
+        status: 'PROCESSED'
+      }
+    });
+  } catch (error) {
+    await prisma.smsMessage.create({
+      data: {
+        phone,
+        userId,
+        direction: 'OUTBOUND',
+        message,
+        intent: 'RESULTS_READY',
+        response: error instanceof Error ? error.message : 'Failed to send text message',
+        status: 'FAILED'
+      }
+    });
+    throw error;
+  }
+
+  return { sent: true, to: phone };
+}
+
+async function getCoachResultsNotificationContext(
+  actor: { id: string; role: Role; firstName: string; lastName: string },
+  userId: string
+) {
+  await requireCoachClient(actor, userId);
+
+  const client = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { email: true, firstName: true, phone: true }
+  });
+  const coachName = `${actor.firstName} ${actor.lastName}`.trim() || 'Your coach';
+  const links = buildResultsReadyLinks(env.CLIENT_URL);
+
+  return { client, coachName, links };
 }
 
 export async function listCoachNutritionTemplates(coachId: string) {

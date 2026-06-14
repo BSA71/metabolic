@@ -16,6 +16,8 @@ import {
   getCoachSettings,
   listCoachClientGroups,
   listCoachClients,
+  sendCoachResultsReadyEmail,
+  sendCoachResultsReadySms,
   setCoachClientGroupMembers,
   updateCoachCheckIn,
   updateCoachClientGroup,
@@ -146,6 +148,14 @@ const checkInBody = z.object({
 const checkInUpdateBody = checkInBody.partial().refine((body) => Object.keys(body).length > 0, {
   message: 'At least one field is required'
 });
+const sendResultsSmsBody = z
+  .object({
+    phone: z.string().trim().min(1).optional(),
+    savePhone: z.boolean().optional()
+  })
+  .refine((body) => !body.phone || body.savePhone, {
+    message: 'phone requires savePhone'
+  });
 
 export async function coachRoutes(app: FastifyInstance) {
   app.get('/api/coach/settings', { preHandler: coachOnly }, async (request) => getCoachSettings(request.appUser!.id));
@@ -263,6 +273,28 @@ export async function coachRoutes(app: FastifyInstance) {
       return await getCoachClientEngagement(request.appUser!, (request.params as { userId: string }).userId);
     } catch (error) {
       return reply.code(403).send({ error: error instanceof Error ? error.message : 'Unable to load engagement' });
+    }
+  });
+
+  app.post('/api/coach/users/:userId/send-results-email', { preHandler: coachOnly }, async (request, reply) => {
+    try {
+      return await sendCoachResultsReadyEmail(request.appUser!, (request.params as { userId: string }).userId);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to send email' });
+    }
+  });
+
+  app.post('/api/coach/users/:userId/send-results-sms', { preHandler: coachOnly }, async (request, reply) => {
+    const parsed = sendResultsSmsBody.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request' });
+    try {
+      return await sendCoachResultsReadySms(
+        request.appUser!,
+        (request.params as { userId: string }).userId,
+        parsed.data
+      );
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to send text message' });
     }
   });
 

@@ -1,5 +1,14 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { config } from "dotenv";
 import { z } from "zod";
-import "dotenv/config";
+
+for (const envPath of [path.resolve(process.cwd(), ".env"), path.resolve(process.cwd(), "server/.env")]) {
+  if (existsSync(envPath)) {
+    config({ path: envPath, override: true });
+    break;
+  }
+}
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
@@ -15,6 +24,9 @@ const envSchema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional().default(""),
   TWILIO_AUTH_TOKEN: z.string().optional().default(""),
   TWILIO_PHONE_NUMBER: z.string().optional().default(""),
+  SENDGRID_API_KEY: z.string().optional().default(""),
+  SENDGRID_FROM_EMAIL: z.string().email().optional().or(z.literal("")).default(""),
+  SENDGRID_FROM_NAME: z.string().optional().default("Master Metabolic"),
   CLIENT_URL: z.string().url().default("http://localhost:5173")
 });
 

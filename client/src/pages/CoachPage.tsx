@@ -6,6 +6,7 @@ import type { ClientGroup, CoachClient, Dashboard, ExercisePlanTemplateSummary, 
 import type { GamificationDashboard } from '../types/gamification';
 import { CoachCalendar } from '../components/coach/CoachCalendar';
 import { ClientGroupsDrawer } from '../components/coach/ClientGroupsDrawer';
+import { SendResultsMenu } from '../components/coach/SendResultsMenu';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 
@@ -47,6 +48,9 @@ export function CoachPage() {
   const [setAsDefault, setSetAsDefault] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [sendingSms, setSendingSms] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const [error, setError] = useState('');
   const [workspaceView, setWorkspaceView] = useState<'list' | 'calendar'>('list');
 
@@ -167,6 +171,66 @@ export function CoachPage() {
     setWorkspaceView('list');
   }
 
+  async function sendResultsEmail() {
+    if (!selectedClient) return;
+    const confirmed = window.confirm(
+      `Send a results-ready email to ${clientName(selectedClient)} at ${selectedClient.email}?`
+    );
+    if (!confirmed) return;
+
+    setSendingEmail(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      const result = await api<{ sent: boolean; to: string }>(
+        `/api/coach/users/${selectedClient.id}/send-results-email`,
+        { method: 'POST' }
+      );
+      setSuccessMessage(`Results email sent to ${result.to}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send results email');
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
+  async function sendResultsSms() {
+    if (!selectedClient) return;
+
+    let phone = selectedClient.textPhone ?? selectedClient.phone?.trim() ?? '';
+    let savePhone = false;
+    if (!phone) {
+      const entered = window.prompt(
+        'This client has no phone on file. Enter their personal mobile number in E.164 format (e.g. +15551234567). Do not use the Master Metabolic business/WhatsApp number.'
+      );
+      if (!entered?.trim()) return;
+      phone = entered.trim();
+      savePhone = true;
+    }
+
+    const confirmed = window.confirm(`Send a results-ready text to ${clientName(selectedClient)} at ${phone}?`);
+    if (!confirmed) return;
+
+    setSendingSms(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      const result = await api<{ sent: boolean; to: string }>(
+        `/api/coach/users/${selectedClient.id}/send-results-sms`,
+        {
+          method: 'POST',
+          body: JSON.stringify(savePhone ? { phone, savePhone: true } : undefined)
+        }
+      );
+      setSuccessMessage(`Results text sent to ${result.to}.`);
+      if (savePhone) await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send results text');
+    } finally {
+      setSendingSms(false);
+    }
+  }
+
   async function saveSettings() {
     setSaving(true);
     setError('');
@@ -227,6 +291,12 @@ export function CoachPage() {
       {error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p>{error}</p>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <p>{successMessage}</p>
         </div>
       )}
 
@@ -362,7 +432,21 @@ export function CoachPage() {
 
             {selectedClient && (
               <Card>
-                <h2 className="text-lg font-bold">{clientName(selectedClient)} progress</h2>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <h2 className="text-lg font-bold">{clientName(selectedClient)} progress</h2>
+                  <SendResultsMenu
+                    disabled={saving}
+                    sendingEmail={sendingEmail}
+                    sendingSms={sendingSms}
+                    onSendEmail={sendResultsEmail}
+                    onSendText={sendResultsSms}
+                  />
+                </div>
+                <p className="mt-2 text-sm text-app-text-muted">
+                  {selectedClient.textPhone
+                    ? `Text will go to ${selectedClient.textPhone}.`
+                    : 'No phone on file yet — you can enter one when sending, or add it in Admin → Users.'}
+                </p>
                 {dashboard?.summary ? (
                   <div className="mt-4 space-y-4">
                     <div className="grid gap-3 sm:grid-cols-4">
