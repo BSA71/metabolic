@@ -1,6 +1,16 @@
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'COACH' | 'USER' | 'VIEWER';
 export type UserStatus = 'ACTIVE' | 'INVITED' | 'DISABLED';
-export type AppUser = { id: string; email: string; firstName: string; lastName: string; role: Role; phone?: string };
+export type AppUser = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: Role;
+  phone?: string;
+  gender?: string | null;
+  birthDate?: string | null;
+};
+export type UserDemographics = { gender: string | null; birthDate: string | null };
 export type UserSummary = Pick<AppUser, 'id' | 'firstName' | 'lastName' | 'email'>;
 export type AdminUser = AppUser & {
   status: UserStatus;

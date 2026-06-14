@@ -1,6 +1,7 @@
 import { ProgramStatus, Role, Visibility } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
-import { startOfUtcDay } from '../utils/dates.js';
+import { startOfUtcDay, parseDateParam } from '../utils/dates.js';
+import { normalizeGender } from './bloodPanelMetrics.js';
 import { buildProgramMetrics } from '../utils/programMetrics.js';
 import { ensureTodayDailyLog } from './dailyLogService.js';
 import { applyTemplateMealsToLog } from './nutritionTemplateApply.js';
@@ -73,6 +74,8 @@ type SetupInput = {
   proteinTarget?: number;
   coachCode?: string;
   wantsCoach?: boolean;
+  gender?: string;
+  birthDate?: string;
 };
 
 function normalizeCoachCode(value?: string) {
@@ -125,6 +128,17 @@ export async function setupFirstProgram(userId: string, input: SetupInput) {
   const targetEndDate = new Date(today.getTime() + 16 * 7 * 86400000);
 
   const program = await prisma.$transaction(async (tx) => {
+    const profileUpdate: { gender?: string | null; birthDate?: Date | null } = {};
+    if (input.gender) {
+      profileUpdate.gender = normalizeGender(input.gender);
+    }
+    if (input.birthDate) {
+      profileUpdate.birthDate = parseDateParam(input.birthDate);
+    }
+    if (Object.keys(profileUpdate).length) {
+      await tx.user.update({ where: { id: userId }, data: profileUpdate });
+    }
+
     if (coach) {
       await tx.coachAssignment.deleteMany({ where: { userId } });
       await tx.coachAssignment.create({ data: { coachId: coach.id, userId } });

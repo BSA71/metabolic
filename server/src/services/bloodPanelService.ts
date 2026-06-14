@@ -1,6 +1,6 @@
-import type { BloodPanel, BloodPanelReferenceRange, Role, User } from '@prisma/client';
+import { ProgramStatus, type BloodPanel, type BloodPanelReferenceRange, type Role, type User } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
-import { canAccessUser } from '../auth/requireRole.js';
+import { canAccessProgramClient, canAccessUser } from '../auth/requireRole.js';
 import { parseDateParam } from '../utils/dates.js';
 import {
   BLOOD_PANEL_METRICS,
@@ -57,10 +57,10 @@ async function loadReferenceRanges() {
   return rows.map(serializeReferenceRange);
 }
 
-function getDemographics(user: Pick<User, 'gender' | 'birthDate'>) {
+function getDemographics(user: Pick<User, 'gender' | 'birthDate'>, onDate: Date) {
   return {
     gender: normalizeGender(user.gender),
-    age: calculateAge(user.birthDate)
+    age: calculateAge(user.birthDate, onDate)
   };
 }
 
@@ -107,7 +107,7 @@ function serializePanel(
   panel: BloodPanel & { enteredBy?: Pick<User, 'id' | 'firstName' | 'lastName'> | null },
   previousPanel: BloodPanel | null,
   ranges: BloodPanelReferenceRangeRow[],
-  demographics: ReturnType<typeof getDemographics>
+  user: Pick<User, 'gender' | 'birthDate'>
 ) {
   return {
     id: panel.id,
@@ -117,14 +117,20 @@ function serializePanel(
     enteredBy: panel.enteredBy
       ? { id: panel.enteredBy.id, name: `${panel.enteredBy.firstName} ${panel.enteredBy.lastName}`.trim() }
       : null,
-    metrics: enrichPanelMetrics(panel, previousPanel, ranges, demographics)
+    metrics: enrichPanelMetrics(panel, previousPanel, ranges, getDemographics(user, panel.labDate))
   };
 }
 
 async function assertBloodPanelAccess(actor: Actor, userId: string) {
-  if (!(await canAccessUser(actor, userId))) {
-    throw new Error('Forbidden');
-  }
+  if (await canAccessUser(actor, userId)) return;
+
+  const program = await prisma.program.findFirst({
+    where: { userId, status: ProgramStatus.ACTIVE },
+    select: { coachId: true }
+  });
+  if (program && (await canAccessProgramClient(actor, userId, program.coachId))) return;
+
+  throw new Error('Forbidden');
 }
 
 async function getSubjectUser(userId: string) {
@@ -149,10 +155,9 @@ export async function listBloodPanels(actor: Actor, userId: string, limit = 50) 
     })
   ]);
 
-  const demographics = getDemographics(user);
   return panels.map((panel, index) => {
     const previousPanel = panels[index + 1] ?? null;
-    return serializePanel(panel, previousPanel, ranges, demographics);
+    return serializePanel(panel, previousPanel, ranges, user);
   });
 }
 
@@ -176,8 +181,7 @@ export async function getBloodPanel(actor: Actor, userId: string, panelId: strin
   const index = panels.findIndex((panel) => panel.id === panelId);
   if (index === -1) throw new Error('Blood panel not found');
 
-  const demographics = getDemographics(user);
-  return serializePanel(panels[index], panels[index + 1] ?? null, ranges, demographics);
+  return serializePanel(panels[index], panels[index + 1] ?? null, ranges, user);
 }
 
 export async function createBloodPanel(actor: Actor, userId: string, input: PanelInput) {

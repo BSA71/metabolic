@@ -12,7 +12,9 @@ const setupBody = z.object({
   calorieTarget: z.number().finite().positive().max(10000).optional(),
   proteinTarget: z.number().finite().positive().max(1000).optional(),
   coachCode: z.string().trim().max(20).optional(),
-  wantsCoach: z.boolean().optional()
+  wantsCoach: z.boolean().optional(),
+  gender: z.enum(['m', 'f', 'male', 'female']).optional(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
 });
 
 export async function onboardingRoutes(app: FastifyInstance) {

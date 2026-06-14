@@ -1,6 +1,6 @@
 import { ProgramStatus, type Role } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
-import { canAccessUser } from '../auth/requireRole.js';
+import { canAccessProgramClient } from '../auth/requireRole.js';
 import { getProgram } from './programService.js';
 import { getBloodPanelHistoryForExport } from './bloodPanelService.js';
 import { n, round } from '../utils/numbers.js';
@@ -30,9 +30,6 @@ export async function getProgressSummary(actor: Actor, programId: string) {
   if (!program) throw new Error('Program not found');
 
   const userId = program.userId;
-  if (!(await canAccessUser(actor, userId))) {
-    throw new Error('Forbidden');
-  }
 
   const client = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
@@ -53,7 +50,7 @@ export async function getProgressSummary(actor: Actor, programId: string) {
     }),
     prisma.dailyLog.findMany({
       where: { userId, weight: { not: null } },
-      orderBy: { date: 'asc' },
+      orderBy: { date: 'desc' },
       take: 60,
       select: { date: true, weight: true }
     }),
@@ -128,10 +125,13 @@ export async function getProgressSummary(actor: Actor, programId: string) {
       backUrl: photoSet.backUrl,
       photoCount: [photoSet.frontUrl, photoSet.sideUrl, photoSet.backUrl].filter(Boolean).length
     })),
-    weightTrend: weightLogs.map((log) => ({
-      date: log.date.toISOString().slice(0, 10),
-      weight: n(log.weight)
-    })),
+    weightTrend: weightLogs
+      .slice()
+      .reverse()
+      .map((log) => ({
+        date: log.date.toISOString().slice(0, 10),
+        weight: n(log.weight)
+      })),
     bodyCompositionTrend: bodyCompositionLogs
       .slice()
       .reverse()
@@ -147,15 +147,16 @@ export async function getProgressSummary(actor: Actor, programId: string) {
 
 export async function getActiveProgressSummaryForUser(actor: Actor, userId?: string) {
   const targetUserId = userId ?? actor.id;
-  if (!(await canAccessUser(actor, targetUserId))) {
-    throw new Error('Forbidden');
-  }
 
   const program = await prisma.program.findFirst({
     where: { userId: targetUserId, status: ProgramStatus.ACTIVE },
-    select: { id: true }
+    select: { id: true, userId: true, coachId: true }
   });
   if (!program) throw new Error('No active program found');
+
+  if (!(await canAccessProgramClient(actor, program.userId, program.coachId))) {
+    throw new Error('Forbidden');
+  }
 
   return getProgressSummary(actor, program.id);
 }
