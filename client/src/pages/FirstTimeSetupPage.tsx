@@ -23,6 +23,8 @@ export function FirstTimeSetupPage({ user, onComplete }: FirstTimeSetupPageProps
   const [goalBodyFat, setGoalBodyFat] = useState('');
   const [coachCode, setCoachCode] = useState('');
   const [wantsCoach, setWantsCoach] = useState(false);
+  const [gender, setGender] = useState<'m' | 'f' | ''>('');
+  const [birthDate, setBirthDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -62,7 +64,9 @@ export function FirstTimeSetupPage({ user, onComplete }: FirstTimeSetupPageProps
           ...(currentBodyFat !== undefined ? { bodyFat: currentBodyFat } : {}),
           ...(targetBodyFat !== undefined ? { goalBodyFat: targetBodyFat } : {}),
           ...(coachCode.trim() ? { coachCode: coachCode.trim() } : {}),
-          ...(wantsCoach ? { wantsCoach: true } : {})
+          ...(wantsCoach ? { wantsCoach: true } : {}),
+          ...(gender ? { gender } : {}),
+          ...(birthDate ? { birthDate } : {})
         })
       });
       onComplete();
@@ -179,6 +183,42 @@ export function FirstTimeSetupPage({ user, onComplete }: FirstTimeSetupPageProps
                 max="75"
                 step="0.1"
               />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-app-border bg-app-muted/40 p-4">
+            <p className="text-sm font-semibold text-app-text">Lab reference profile</p>
+            <p className="mt-1 text-sm text-app-text-muted">
+              Optional now. Helps classify future blood panel results against the right age and gender ranges.
+            </p>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="gender" className="mb-2 block text-sm font-medium text-app-text">
+                  Gender
+                </label>
+                <select
+                  id="gender"
+                  className={inputClass}
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value as 'm' | 'f' | '')}
+                >
+                  <option value="">Prefer not to say yet</option>
+                  <option value="f">Female</option>
+                  <option value="m">Male</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="birth-date" className="mb-2 block text-sm font-medium text-app-text">
+                  Birth date
+                </label>
+                <input
+                  id="birth-date"
+                  className={inputClass}
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 

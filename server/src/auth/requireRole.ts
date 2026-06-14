@@ -39,3 +39,12 @@ export async function canAccessUser(actor: { id: string; role: Role }, ownerId: 
 export async function canEditOwnOrAssigned(actor: { id: string; role: Role }, ownerId: string) {
   return canAccessUser(actor, ownerId);
 }
+
+export async function canAccessProgramClient(
+  actor: { id: string; role: Role },
+  clientUserId: string,
+  programCoachId?: string | null
+) {
+  if (await canAccessUser(actor, clientUserId)) return true;
+  return programCoachId === actor.id;
+}
