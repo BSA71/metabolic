@@ -1,6 +1,7 @@
 import { ProgramStatus, Visibility, type Role } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { canAccessUser } from '../auth/requireRole.js';
+import { parseDateParam, toDateKey, addUtcDays } from '../utils/dates.js';
 import { getTodayDashboard } from './dashboardService.js';
 import { getGamificationDashboard } from './gamificationService.js';
 import { applyTemplateToDailyLog } from './nutritionTemplateService.js';
@@ -303,4 +304,376 @@ export async function setCoachClientGroupMembers(coachId: string, groupId: strin
     });
   });
   return mapClientGroup(group, coachClientIds);
+}
+
+export type CoachCalendarEventType =
+  | 'daily_log'
+  | 'exercise_plan'
+  | 'metric_snapshot'
+  | 'progress_snapshot'
+  | 'program_start'
+  | 'program_end'
+  | 'check_in';
+
+export type CoachCalendarEvent = {
+  id: string;
+  date: string;
+  type: CoachCalendarEventType;
+  userId: string;
+  userName: string;
+  title: string;
+  detail?: string;
+  checkInId?: string;
+  startsAt?: string;
+  durationMinutes?: number;
+};
+
+export type CoachCheckInRecord = {
+  id: string;
+  userId: string;
+  userName: string;
+  startsAt: string;
+  durationMinutes: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const CHECK_IN_DURATIONS = new Set([30, 60]);
+
+const MAX_CALENDAR_RANGE_DAYS = 93;
+
+function calendarRangeDays(start: Date, end: Date) {
+  return Math.floor((end.getTime() - start.getTime()) / 86_400_000);
+}
+
+async function getCoachCalendarClientIds(coachId: string, groupId?: string | null) {
+  const coachClientIds = await getCoachClientIds(coachId);
+  if (!groupId) return [...coachClientIds];
+  const group = await requireCoachOwnedGroup(coachId, groupId);
+  return group.members.map((member) => member.userId).filter((userId) => coachClientIds.has(userId));
+}
+
+async function requireCoachAssignedClient(coachId: string, userId: string) {
+  const coachClientIds = await getCoachClientIds(coachId);
+  if (!coachClientIds.has(userId)) throw new Error('User is not assigned to this coach');
+}
+
+async function requireCoachOwnedCheckIn(coachId: string, checkInId: string) {
+  const checkIn = await prisma.coachCheckIn.findFirst({ where: { id: checkInId, coachId } });
+  if (!checkIn) throw new Error('Check-in not found');
+  return checkIn;
+}
+
+function parseCheckInStartsAt(value: string) {
+  const startsAt = new Date(value);
+  if (Number.isNaN(startsAt.getTime())) throw new Error('Invalid start time');
+  return startsAt;
+}
+function mapCoachCheckIn(
+  checkIn: {
+    id: string;
+    userId: string;
+    startsAt: Date;
+    durationMinutes: number;
+    notes: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  userNameById: Map<string, string>
+): CoachCheckInRecord {
+  return {
+    id: checkIn.id,
+    userId: checkIn.userId,
+    userName: userNameById.get(checkIn.userId) ?? 'Client',
+    startsAt: checkIn.startsAt.toISOString(),
+    durationMinutes: checkIn.durationMinutes,
+    notes: checkIn.notes,
+    createdAt: checkIn.createdAt.toISOString(),
+    updatedAt: checkIn.updatedAt.toISOString()
+  };
+}
+
+export async function createCoachCheckIn(
+  coachId: string,
+  data: { userId: string; startsAt: string; durationMinutes: number; notes?: string | null }
+) {
+  if (!CHECK_IN_DURATIONS.has(data.durationMinutes)) {
+    throw new Error('Check-in duration must be 30 or 60 minutes');
+  }
+  await requireCoachAssignedClient(coachId, data.userId);
+  const startsAt = parseCheckInStartsAt(data.startsAt);
+
+  const checkIn = await prisma.coachCheckIn.create({
+    data: {
+      coachId,
+      userId: data.userId,
+      startsAt,
+      durationMinutes: data.durationMinutes,
+      notes: data.notes?.trim() || null
+    }
+  });
+
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: data.userId },
+    select: { firstName: true, lastName: true }
+  });
+  return mapCoachCheckIn(checkIn, new Map([[data.userId, `${user.firstName} ${user.lastName}`.trim()]]));
+}
+
+export async function updateCoachCheckIn(
+  coachId: string,
+  checkInId: string,
+  data: { userId?: string; startsAt?: string; durationMinutes?: number; notes?: string | null }
+) {
+  const existing = await requireCoachOwnedCheckIn(coachId, checkInId);
+  const userId = data.userId ?? existing.userId;
+  await requireCoachAssignedClient(coachId, userId);
+
+  if (data.durationMinutes !== undefined && !CHECK_IN_DURATIONS.has(data.durationMinutes)) {
+    throw new Error('Check-in duration must be 30 or 60 minutes');
+  }
+
+  const checkIn = await prisma.coachCheckIn.update({
+    where: { id: checkInId },
+    data: {
+      userId,
+      startsAt: data.startsAt === undefined ? undefined : parseCheckInStartsAt(data.startsAt),
+      durationMinutes: data.durationMinutes,
+      notes: data.notes === undefined ? undefined : data.notes?.trim() || null
+    }
+  });
+
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: checkIn.userId },
+    select: { firstName: true, lastName: true }
+  });
+  return mapCoachCheckIn(checkIn, new Map([[checkIn.userId, `${user.firstName} ${user.lastName}`.trim()]]));
+}
+
+export async function deleteCoachCheckIn(coachId: string, checkInId: string) {
+  await requireCoachOwnedCheckIn(coachId, checkInId);
+  await prisma.coachCheckIn.delete({ where: { id: checkInId } });
+}
+
+export async function getCoachCalendar(
+  coachId: string,
+  start: string,
+  end: string,
+  options?: { groupId?: string | null }
+) {
+  const startDate = parseDateParam(start);
+  const endDate = parseDateParam(end);
+  if (startDate > endDate) throw new Error('Start date must be on or before end date');
+  if (calendarRangeDays(startDate, endDate) > MAX_CALENDAR_RANGE_DAYS) {
+    throw new Error(`Date range cannot exceed ${MAX_CALENDAR_RANGE_DAYS} days`);
+  }
+
+  const clientIds = await getCoachCalendarClientIds(coachId, options?.groupId);
+  if (!clientIds.length) return { start, end, events: [] as CoachCalendarEvent[] };
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: clientIds } },
+    select: { id: true, firstName: true, lastName: true }
+  });
+  const userNameById = new Map(users.map((user) => [user.id, `${user.firstName} ${user.lastName}`.trim()]));
+
+  const rangeEndExclusive = addUtcDays(endDate, 1);
+
+  const [dailyLogs, scheduledExercises, metricSnapshots, progressSnapshots, programs, checkIns] = await Promise.all([
+    prisma.dailyLog.findMany({
+      where: { userId: { in: clientIds }, date: { gte: startDate, lte: endDate } },
+      select: {
+        id: true,
+        userId: true,
+        date: true,
+        mealsPlanned: true,
+        mealsCompleted: true,
+        exercisesPlanned: true,
+        exercisesCompleted: true
+      }
+    }),
+    prisma.scheduledExercise.findMany({
+      where: { userId: { in: clientIds }, scheduledDate: { gte: startDate, lte: endDate } },
+      select: { id: true, userId: true, scheduledDate: true, status: true }
+    }),
+    prisma.programMetricSnapshot.findMany({
+      where: {
+        program: { userId: { in: clientIds } },
+        date: { gte: startDate, lte: endDate }
+      },
+      select: {
+        id: true,
+        date: true,
+        program: { select: { userId: true, name: true } }
+      }
+    }),
+    prisma.progressSnapshot.findMany({
+      where: { userId: { in: clientIds }, snapshotDate: { gte: startDate, lte: endDate } },
+      select: { id: true, userId: true, snapshotDate: true, completionStatus: true }
+    }),
+    prisma.program.findMany({
+      where: {
+        userId: { in: clientIds },
+        status: ProgramStatus.ACTIVE,
+        OR: [
+          { startDate: { gte: startDate, lte: endDate } },
+          { targetEndDate: { gte: startDate, lte: endDate } }
+        ]
+      },
+      select: { id: true, userId: true, name: true, startDate: true, targetEndDate: true }
+    }),
+    prisma.coachCheckIn.findMany({
+      where: {
+        coachId,
+        userId: { in: clientIds },
+        startsAt: { gte: startDate, lt: rangeEndExclusive }
+      },
+      select: {
+        id: true,
+        userId: true,
+        startsAt: true,
+        durationMinutes: true,
+        notes: true
+      }
+    })
+  ]);
+
+  const events: CoachCalendarEvent[] = [];
+  const dailyLogKeys = new Set<string>();
+
+  for (const log of dailyLogs) {
+    const date = toDateKey(log.date);
+    dailyLogKeys.add(`${log.userId}:${date}`);
+    if (
+      log.mealsPlanned === 0 &&
+      log.exercisesPlanned === 0 &&
+      log.mealsCompleted === 0 &&
+      log.exercisesCompleted === 0
+    ) {
+      continue;
+    }
+    const parts: string[] = [];
+    if (log.mealsPlanned > 0 || log.mealsCompleted > 0) {
+      parts.push(`Meals ${log.mealsCompleted}/${log.mealsPlanned}`);
+    }
+    if (log.exercisesPlanned > 0 || log.exercisesCompleted > 0) {
+      parts.push(`Exercise ${log.exercisesCompleted}/${log.exercisesPlanned}`);
+    }
+    events.push({
+      id: `daily_log:${log.id}`,
+      date,
+      type: 'daily_log',
+      userId: log.userId,
+      userName: userNameById.get(log.userId) ?? 'Client',
+      title: parts.join(' · ') || 'Daily activity'
+    });
+  }
+
+  const exerciseByDay = new Map<string, { planned: number; done: number }>();
+  for (const exercise of scheduledExercises) {
+    const date = toDateKey(exercise.scheduledDate);
+    const key = `${exercise.userId}:${date}`;
+    const current = exerciseByDay.get(key) ?? { planned: 0, done: 0 };
+    current.planned += 1;
+    if (exercise.status === 'DONE') current.done += 1;
+    exerciseByDay.set(key, current);
+  }
+
+  for (const [key, stats] of exerciseByDay) {
+    if (dailyLogKeys.has(key) || stats.planned === 0) continue;
+    const [userId, date] = key.split(':');
+    events.push({
+      id: `exercise_plan:${userId}:${date}`,
+      date,
+      type: 'exercise_plan',
+      userId,
+      userName: userNameById.get(userId) ?? 'Client',
+      title: `Exercise ${stats.done}/${stats.planned}`
+    });
+  }
+
+  for (const snapshot of metricSnapshots) {
+    const date = toDateKey(snapshot.date);
+    events.push({
+      id: `metric_snapshot:${snapshot.id}`,
+      date,
+      type: 'metric_snapshot',
+      userId: snapshot.program.userId,
+      userName: userNameById.get(snapshot.program.userId) ?? 'Client',
+      title: 'Body metrics snapshot',
+      detail: snapshot.program.name
+    });
+  }
+
+  for (const snapshot of progressSnapshots) {
+    const date = toDateKey(snapshot.snapshotDate);
+    events.push({
+      id: `progress_snapshot:${snapshot.id}`,
+      date,
+      type: 'progress_snapshot',
+      userId: snapshot.userId,
+      userName: userNameById.get(snapshot.userId) ?? 'Client',
+      title: snapshot.completionStatus === 'COMPLETE' ? 'Progress snapshot complete' : 'Progress snapshot started',
+      detail: snapshot.completionStatus === 'COMPLETE' ? undefined : 'Draft'
+    });
+  }
+
+  for (const program of programs) {
+    const startKey = toDateKey(program.startDate);
+    if (startKey >= start && startKey <= end) {
+      events.push({
+        id: `program_start:${program.id}`,
+        date: startKey,
+        type: 'program_start',
+        userId: program.userId,
+        userName: userNameById.get(program.userId) ?? 'Client',
+        title: 'Program started',
+        detail: program.name
+      });
+    }
+    if (program.targetEndDate) {
+      const endKey = toDateKey(program.targetEndDate);
+      if (endKey >= start && endKey <= end) {
+        events.push({
+          id: `program_end:${program.id}`,
+          date: endKey,
+          type: 'program_end',
+          userId: program.userId,
+          userName: userNameById.get(program.userId) ?? 'Client',
+          title: 'Program target end',
+          detail: program.name
+        });
+      }
+    }
+  }
+
+  for (const checkIn of checkIns) {
+    const startsAt = checkIn.startsAt.toISOString();
+    const date = toDateKey(checkIn.startsAt);
+    const durationLabel = checkIn.durationMinutes === 60 ? '1 hour' : '30 minutes';
+    events.push({
+      id: `check_in:${checkIn.id}`,
+      checkInId: checkIn.id,
+      date,
+      type: 'check_in',
+      userId: checkIn.userId,
+      userName: userNameById.get(checkIn.userId) ?? 'Client',
+      title: `Check-in · ${durationLabel}`,
+      detail: checkIn.notes ?? undefined,
+      startsAt,
+      durationMinutes: checkIn.durationMinutes
+    });
+  }
+
+  events.sort((a, b) => {
+    const dateCompare = a.date.localeCompare(b.date);
+    if (dateCompare !== 0) return dateCompare;
+    if (a.startsAt && b.startsAt) return a.startsAt.localeCompare(b.startsAt);
+    if (a.startsAt) return -1;
+    if (b.startsAt) return 1;
+    return a.userName.localeCompare(b.userName) || a.title.localeCompare(b.title);
+  });
+
+  return { start, end, events };
 }

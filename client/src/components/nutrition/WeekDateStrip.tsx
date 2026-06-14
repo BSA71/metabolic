@@ -4,11 +4,13 @@ import { addDays, formatDayAbbrev, formatDayNumber, formatWeekRange, getWeekDate
 export function WeekDateStrip({
   selectedDate,
   onSelectDate,
-  endAction
+  endAction,
+  hideHeader = false
 }: {
   selectedDate: string;
   onSelectDate: (date: string) => void;
   endAction?: React.ReactNode;
+  hideHeader?: boolean;
 }) {
   const weekStart = startOfWeek(selectedDate);
   const weekDates = getWeekDates(weekStart);
@@ -19,13 +21,15 @@ export function WeekDateStrip({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-slate-700">{formatWeekRange(weekStart)}</p>
-        <div className="flex gap-1">
-          <button type="button" onClick={() => shiftWeek(-1)} className="rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-600 hover:bg-slate-50" aria-label="Previous week">◀</button>
-          <button type="button" onClick={() => shiftWeek(1)} className="rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-600 hover:bg-slate-50" aria-label="Next week">▶</button>
+      {!hideHeader && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-slate-700">{formatWeekRange(weekStart)}</p>
+          <div className="flex gap-1">
+            <button type="button" onClick={() => shiftWeek(-1)} className="rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-600 hover:bg-slate-50" aria-label="Previous week">◀</button>
+            <button type="button" onClick={() => shiftWeek(1)} className="rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-600 hover:bg-slate-50" aria-label="Next week">▶</button>
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 snap-x snap-mandatory">
         {weekDates.map((date) => {

@@ -196,3 +196,38 @@ export type ClientGroup = {
   createdAt: string;
   updatedAt: string;
 };
+export type CoachCalendarEventType =
+  | 'daily_log'
+  | 'exercise_plan'
+  | 'metric_snapshot'
+  | 'progress_snapshot'
+  | 'program_start'
+  | 'program_end'
+  | 'check_in';
+export type CoachCalendarEvent = {
+  id: string;
+  date: string;
+  type: CoachCalendarEventType;
+  userId: string;
+  userName: string;
+  title: string;
+  detail?: string;
+  checkInId?: string;
+  startsAt?: string;
+  durationMinutes?: number;
+};
+export type CoachCalendarResponse = {
+  start: string;
+  end: string;
+  events: CoachCalendarEvent[];
+};
+export type CoachCheckIn = {
+  id: string;
+  userId: string;
+  userName: string;
+  startsAt: string;
+  durationMinutes: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};

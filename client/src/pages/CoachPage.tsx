@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { clsx } from 'clsx';
 import { UsersRound } from 'lucide-react';
 import { api, todayKey } from '../services/api';
 import type { ClientGroup, CoachClient, Dashboard, ExercisePlanTemplateSummary, NutritionPlanTemplateSummary } from '../types';
 import type { GamificationDashboard } from '../types/gamification';
+import { CoachCalendar } from '../components/coach/CoachCalendar';
 import { ClientGroupsDrawer } from '../components/coach/ClientGroupsDrawer';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -46,6 +48,7 @@ export function CoachPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [workspaceView, setWorkspaceView] = useState<'list' | 'calendar'>('list');
 
   const selectedGroup = useMemo(
     () => clientGroups.find((group) => group.id === selectedGroupId) ?? null,
@@ -159,6 +162,11 @@ export function CoachPage() {
     }
   }
 
+  function handleCalendarSelectClient(userId: string) {
+    setSelectedClientId(userId);
+    setWorkspaceView('list');
+  }
+
   async function saveSettings() {
     setSaving(true);
     setError('');
@@ -185,9 +193,35 @@ export function CoachPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Coach Workspace</h1>
-        <p className="text-app-text-muted">Manage assigned users, review progress, and apply plans.</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Coach Workspace</h1>
+          <p className="text-app-text-muted">Manage assigned users, review progress, and apply plans.</p>
+        </div>
+        {clients.length > 0 && (
+          <div className="inline-flex rounded-xl border border-app-border p-1">
+            <button
+              type="button"
+              className={clsx(
+                'rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                workspaceView === 'list' ? 'bg-app-muted text-app-text' : 'text-app-text-muted hover:text-app-text'
+              )}
+              onClick={() => setWorkspaceView('list')}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              className={clsx(
+                'rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                workspaceView === 'calendar' ? 'bg-app-muted text-app-text' : 'text-app-text-muted hover:text-app-text'
+              )}
+              onClick={() => setWorkspaceView('calendar')}
+            >
+              Calendar
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -218,22 +252,15 @@ export function CoachPage() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
           <div className="space-y-4">
-            <Card>
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-bold">Assigned users</h2>
-                  <p className="text-sm text-app-text-muted">
-                    {visibleClients.length} of {clients.length} client{clients.length === 1 ? '' : 's'}
-                    {selectedGroup ? ` in ${selectedGroup.name}` : ''}
-                  </p>
-                </div>
+            {workspaceView === 'list' && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <select
                     className="rounded-xl border border-app-border bg-app-surface px-3 py-2 text-sm"
                     value={selectedGroupId}
                     onChange={(event) => setSelectedGroupId(event.target.value)}
                   >
-                    <option value="">All clients</option>
+                    <option value="">All groups</option>
                     {clientGroups.map((group) => (
                       <option key={group.id} value={group.id}>
                         {group.name} ({group.memberCount})
@@ -249,17 +276,41 @@ export function CoachPage() {
                   >
                     <UsersRound className="h-[1.375rem] w-[1.375rem]" />
                   </button>
-                  <select
-                    className="rounded-xl border border-app-border bg-app-surface px-3 py-2 text-sm"
-                    value={selectedClient?.id ?? ''}
-                    onChange={(event) => setSelectedClientId(event.target.value)}
-                  >
-                    {visibleClients.map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {clientName(client)}
-                      </option>
-                    ))}
-                  </select>
+                </div>
+                <select
+                  className="rounded-xl border border-app-border bg-app-surface px-3 py-2 text-sm"
+                  value={selectedClient?.id ?? ''}
+                  onChange={(event) => setSelectedClientId(event.target.value)}
+                >
+                  {visibleClients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {clientName(client)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {workspaceView === 'calendar' ? (
+              <CoachCalendar
+                clients={visibleClients}
+                scheduleClients={clients}
+                clientGroups={clientGroups}
+                groupId={selectedGroupId}
+                onGroupChange={setSelectedGroupId}
+                onManageGroups={() => setGroupsOpen(true)}
+                onSelectClient={handleCalendarSelectClient}
+              />
+            ) : (
+              <>
+            <Card>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold">Assigned users</h2>
+                  <p className="text-sm text-app-text-muted">
+                    {visibleClients.length} of {clients.length} client{clients.length === 1 ? '' : 's'}
+                    {selectedGroup ? ` in ${selectedGroup.name}` : ''}
+                  </p>
                 </div>
               </div>
 
@@ -390,6 +441,8 @@ export function CoachPage() {
                   <p className="mt-2 text-sm text-app-text-muted">No dashboard data available for this user yet.</p>
                 )}
               </Card>
+            )}
+              </>
             )}
           </div>
 

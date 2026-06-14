@@ -96,3 +96,33 @@ export function formatDayAbbrev(date: string) {
 export function formatDayNumber(date: string) {
   return parseDateKey(date).getUTCDate();
 }
+
+export function startOfMonth(date: string) {
+  const d = parseDateKey(date);
+  return toDateKey(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)));
+}
+
+export function endOfMonth(date: string) {
+  const d = parseDateKey(date);
+  return toDateKey(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)));
+}
+
+export function addMonths(date: string, months: number) {
+  const d = parseDateKey(date);
+  return toDateKey(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, d.getUTCDate())));
+}
+
+export function formatMonthLabel(date: string) {
+  return parseDateKey(date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+export function getMonthGridDates(monthStart: string) {
+  const firstDay = parseDateKey(monthStart);
+  const gridStart = parseDateKey(startOfWeek(monthStart));
+  const month = firstDay.getUTCMonth();
+  const dates: string[] = [];
+  for (let i = 0; i < 42; i += 1) {
+    dates.push(addDays(toDateKey(gridStart), i));
+  }
+  return { dates, month };
+}

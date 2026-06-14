@@ -7,13 +7,17 @@ import {
   applyCoachExerciseTemplate,
   applyCoachNutritionTemplate,
   createCoachClientGroup,
+  createCoachCheckIn,
   deleteCoachClientGroup,
+  deleteCoachCheckIn,
   getCoachClientDashboard,
   getCoachClientEngagement,
+  getCoachCalendar,
   getCoachSettings,
   listCoachClientGroups,
   listCoachClients,
   setCoachClientGroupMembers,
+  updateCoachCheckIn,
   updateCoachClientGroup,
   updateCoachSettings
 } from '../services/coachService.js';
@@ -128,6 +132,20 @@ const clientGroupUpdateBody = z
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
 const clientGroupMembersBody = z.object({ memberIds: z.array(z.string().trim().min(1)) });
+const coachCalendarQuery = z.object({
+  start: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
+  end: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
+  groupId: z.string().trim().min(1).optional()
+});
+const checkInBody = z.object({
+  userId: z.string().trim().min(1),
+  startsAt: z.string().trim().min(1),
+  durationMinutes: z.union([z.literal(30), z.literal(60)]),
+  notes: z.string().trim().nullable().optional()
+});
+const checkInUpdateBody = checkInBody.partial().refine((body) => Object.keys(body).length > 0, {
+  message: 'At least one field is required'
+});
 
 export async function coachRoutes(app: FastifyInstance) {
   app.get('/api/coach/settings', { preHandler: coachOnly }, async (request) => getCoachSettings(request.appUser!.id));
@@ -143,6 +161,47 @@ export async function coachRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/coach/users', { preHandler: coachOnly }, async (request) => listCoachClients(request.appUser!.id));
+
+  app.get('/api/coach/calendar', { preHandler: coachOnly }, async (request, reply) => {
+    const parsed = coachCalendarQuery.safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid calendar range' });
+    try {
+      return await getCoachCalendar(request.appUser!.id, parsed.data.start, parsed.data.end, {
+        groupId: parsed.data.groupId ?? null
+      });
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to load calendar' });
+    }
+  });
+
+  app.post('/api/coach/check-ins', { preHandler: coachOnly }, async (request, reply) => {
+    const parsed = checkInBody.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid check-in' });
+    try {
+      return await createCoachCheckIn(request.appUser!.id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to schedule check-in' });
+    }
+  });
+
+  app.patch('/api/coach/check-ins/:id', { preHandler: coachOnly }, async (request, reply) => {
+    const parsed = checkInUpdateBody.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid check-in' });
+    try {
+      return await updateCoachCheckIn(request.appUser!.id, (request.params as { id: string }).id, parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to update check-in' });
+    }
+  });
+
+  app.delete('/api/coach/check-ins/:id', { preHandler: coachOnly }, async (request, reply) => {
+    try {
+      await deleteCoachCheckIn(request.appUser!.id, (request.params as { id: string }).id);
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to delete check-in' });
+    }
+  });
 
   app.get('/api/coach/client-groups', { preHandler: coachOnly }, async (request) =>
     listCoachClientGroups(request.appUser!.id)
