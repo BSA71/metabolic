@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '../../services/api';
+import { api, toDateKey } from '../../services/api';
 import type { CoachCheckIn, CoachCalendarEvent, CoachClient } from '../../types';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
@@ -9,25 +9,24 @@ function clientName(client: CoachClient) {
 }
 
 function toLocalDateFromIso(iso: string) {
-  const date = new Date(iso);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return toDateKey(new Date(iso));
 }
 
 function toLocalTimeInput(iso?: string) {
   if (!iso) return '09:00';
   const date = new Date(iso);
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
 }
 
 function toStartsAtIso(date: string, time: string) {
-  const local = new Date(`${date}T${time}:00`);
-  if (Number.isNaN(local.getTime())) throw new Error('Enter a valid date and time.');
-  return local.toISOString();
+  const [year, month, day] = date.split('-').map(Number);
+  const [hours, minutes] = time.split(':').map(Number);
+  if (!year || !month || !day || Number.isNaN(hours) || Number.isNaN(minutes)) {
+    throw new Error('Enter a valid date and time.');
+  }
+  return new Date(Date.UTC(year, month - 1, day, hours, minutes)).toISOString();
 }
 
 export function ScheduleCheckInDrawer({

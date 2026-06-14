@@ -59,6 +59,8 @@ const ACTIVITY_FILTER_OPTIONS: { value: CoachCalendarEventType; label: string }[
   { value: 'program_end', label: 'Program target ends' }
 ];
 
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
 const selectClassName = 'rounded-xl border border-app-border bg-app-surface px-3 py-2 text-sm';
 
 function formatSelectedDay(date: string) {
@@ -76,7 +78,11 @@ function clientName(client: CoachClient) {
 
 function formatCheckInTime(startsAt?: string) {
   if (!startsAt) return '';
-  return new Date(startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return new Date(startsAt).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'UTC'
+  });
 }
 
 function activityFilterLabel(selected: CoachCalendarEventType[]) {
@@ -205,6 +211,16 @@ export function CoachCalendar({
     setSelectedDate(next);
   }
 
+  function selectDate(date: string) {
+    setSelectedDate(date);
+    setAnchorDate(date);
+  }
+
+  function setRangeModeAndSync(mode: 'week' | 'month') {
+    setAnchorDate(selectedDate);
+    setRangeMode(mode);
+  }
+
   function openScheduleCheckIn(event?: CoachCalendarEvent | null) {
     setEditingCheckIn(event ?? null);
     setCheckInOpen(true);
@@ -254,7 +270,7 @@ export function CoachCalendar({
                 'min-w-0',
                 rangeMode === 'week' ? 'bg-app-muted text-app-text' : 'text-app-text-muted hover:bg-app-muted hover:text-app-text'
               )}
-              onClick={() => setRangeMode('week')}
+              onClick={() => setRangeModeAndSync('week')}
             >
               <CalendarDays className="h-[1.375rem] w-[1.375rem]" />
             </button>
@@ -267,7 +283,7 @@ export function CoachCalendar({
                 'min-w-0',
                 rangeMode === 'month' ? 'bg-app-muted text-app-text' : 'text-app-text-muted hover:bg-app-muted hover:text-app-text'
               )}
-              onClick={() => setRangeMode('month')}
+              onClick={() => setRangeModeAndSync('month')}
             >
               <Calendar className="h-[1.375rem] w-[1.375rem]" />
             </button>
@@ -417,15 +433,12 @@ export function CoachCalendar({
         <WeekDateStrip
           hideHeader
           selectedDate={selectedDate}
-          onSelectDate={(date) => {
-            setSelectedDate(date);
-            setAnchorDate(date);
-          }}
+          onSelectDate={selectDate}
         />
       ) : (
         <div className="space-y-3">
           <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-app-text-muted">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label) => (
+            {WEEKDAY_LABELS.map((label) => (
               <div key={label} className="py-1">
                 {label}
               </div>
@@ -442,7 +455,7 @@ export function CoachCalendar({
                 <button
                   key={date}
                   type="button"
-                  onClick={() => setSelectedDate(date)}
+                  onClick={() => selectDate(date)}
                   className={clsx(
                     'min-h-[4.5rem] rounded-xl border p-2 text-left transition',
                     selected
@@ -533,7 +546,7 @@ export function CoachCalendar({
                     ? 'bg-brand-navy text-brand-off-white dark:bg-brand-green dark:text-brand-navy'
                     : 'bg-app-muted text-app-text'
                 )}
-                onClick={() => setSelectedDate(date)}
+                onClick={() => selectDate(date)}
               >
                 {formatDayAbbrev(date)} {formatDayNumber(date)} · {count}
               </button>
