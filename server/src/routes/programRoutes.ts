@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/requireAuth.js';
 import { activateProgram, getProgram, listPrograms, listProgramMetricSnapshots, listProgressPhotoSets, saveProgramMetricSnapshot, updateProgramMetricSnapshot, updateProgramMetrics, upsertProgressPhotoSet, upsertSnapshotMeasurement } from '../services/programService.js';
+import { getActiveProgressSummaryForUser, getProgressSummary } from '../services/progressSummaryService.js';
 import { prisma } from '../db/prisma.js';
 
 const programBody = z.object({ name: z.string().min(1), startDate: z.string(), targetEndDate: z.string().optional().nullable() });
@@ -159,6 +160,29 @@ export async function programRoutes(app: FastifyInstance) {
     } catch (error) {
       request.log.error({ err: error }, 'Failed to save progress photos');
       return reply.code(400).send({ error: error instanceof Error ? error.message : 'Unable to save progress photos' });
+    }
+  });
+
+  app.get('/api/programs/:id/progress-summary', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      return await getProgressSummary(request.appUser!, id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load progress summary';
+      const status = message === 'Forbidden' ? 403 : message === 'Program not found' ? 404 : 400;
+      return reply.code(status).send({ error: message });
+    }
+  });
+
+  app.get('/api/progress/summary', { preHandler: requireAuth }, async (request, reply) => {
+    const query = request.query as { userId?: string };
+    try {
+      return await getActiveProgressSummaryForUser(request.appUser!, query.userId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load progress summary';
+      const status =
+        message === 'Forbidden' ? 403 : message === 'No active program found' ? 404 : 400;
+      return reply.code(status).send({ error: message });
     }
   });
 

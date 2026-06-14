@@ -29,6 +29,7 @@ import { BaselineSnapshotPage } from './pages/BaselineSnapshotPage';
 import { ExerciseExportPage } from './pages/export/ExerciseExportPage';
 import { NutritionExportPage } from './pages/export/NutritionExportPage';
 import { ShoppingListExportPage } from './pages/export/ShoppingListExportPage';
+import { ProgressExportPage } from './pages/export/ProgressExportPage';
 import { isAdminRole, isCoachRole } from './utils/roles';
 
 function LoadingScreen() {
@@ -188,6 +189,7 @@ export default function App() {
           <Route path="nutrition/export" element={<NutritionExportPage />} />
           <Route path="nutrition/shopping-list/export" element={<ShoppingListExportPage />} />
           <Route path="exercise/export" element={<ExerciseExportPage />} />
+          <Route path="progress/export" element={<ProgressExportPage />} />
           <Route element={<AppShell user={appUser} />}>
             <Route index element={<DashboardPage user={appUser} />} />
             <Route path="program" element={<ProgramPage />} />

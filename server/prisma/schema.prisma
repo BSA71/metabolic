@@ -161,6 +161,8 @@ model User {
   firstName String
   lastName String
   phone String?
+  gender String?
+  birthDate DateTime? @db.Date
   role Role @default(USER)
   status UserStatus @default(ACTIVE)
   coachCode String? @unique
@@ -197,8 +199,50 @@ model User {
   dailyFoodLogs DailyFoodLog[]
   progressSnapshots ProgressSnapshot[]
   weeklyReflections WeeklyReflection[]
+  bloodPanels BloodPanel[] @relation("BloodPanelUser")
+  bloodPanelsEntered BloodPanel[] @relation("BloodPanelEnteredBy")
   defaultNutritionTemplate NutritionPlanTemplate? @relation("CoachDefaultNutritionTemplate", fields: [defaultNutritionTemplateId], references: [id], onDelete: SetNull)
   defaultExerciseTemplate ExerciseTemplate? @relation("CoachDefaultExerciseTemplate", fields: [defaultExerciseTemplateId], references: [id], onDelete: SetNull)
+}
+
+model BloodPanel {
+  id String @id @default(cuid())
+  userId String
+  labDate DateTime @db.Date
+  labProvider String?
+  glucose Decimal? @db.Decimal(10, 2)
+  totalCholesterol Decimal? @db.Decimal(10, 2)
+  hdl Decimal? @db.Decimal(10, 2)
+  ldl Decimal? @db.Decimal(10, 2)
+  triglycerides Decimal? @db.Decimal(10, 2)
+  hemoglobinA1c Decimal? @db.Decimal(10, 2)
+  insulin Decimal? @db.Decimal(10, 2)
+  testosterone Decimal? @db.Decimal(10, 2)
+  notes String?
+  enteredByUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation("BloodPanelUser", fields: [userId], references: [id], onDelete: Cascade)
+  enteredBy User? @relation("BloodPanelEnteredBy", fields: [enteredByUserId], references: [id], onDelete: SetNull)
+  @@index([userId])
+  @@index([userId, labDate(sort: Desc)])
+}
+
+model BloodPanelReferenceRange {
+  id String @id @default(cuid())
+  metricKey String
+  gender String
+  ageMin Int
+  ageMax Int
+  lowMax Decimal? @db.Decimal(10, 2)
+  normalMin Decimal @db.Decimal(10, 2)
+  normalMax Decimal @db.Decimal(10, 2)
+  highMin Decimal? @db.Decimal(10, 2)
+  unit String
+  description String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([metricKey, gender, ageMin, ageMax])
 }
 
 model Organization {

@@ -98,7 +98,7 @@ export type ProgressPhotoSet = {
   sideUrl: string | null;
   backUrl: string | null;
 };
-export type Program = { id: string; name: string; status: string; startDate: string; targetEndDate?: string; metrics: ProgramMetric[] };
+export type Program = { id: string; userId: string; name: string; status: string; startDate: string; targetEndDate?: string; metrics: ProgramMetric[] };
 export type NutritionTemplateMealItem = {
   id: string;
   foodId?: string | null;
@@ -230,4 +230,74 @@ export type CoachCheckIn = {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+};
+export type BloodPanelStatus = 'low' | 'normal' | 'high' | 'unknown';
+export type BloodPanelTrend = 'up' | 'down' | 'same';
+export type BloodPanelMetricValue = {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  status: BloodPanelStatus | null;
+  previousValue: number | null;
+  trend: BloodPanelTrend | null;
+  referenceRange: { low: string; normal: string; high: string } | null;
+  description: string | null;
+};
+export type BloodPanelSummary = {
+  id: string;
+  labDate: string;
+  labProvider: string | null;
+  notes: string | null;
+  enteredBy: { id: string; name: string } | null;
+  metrics: BloodPanelMetricValue[];
+};
+export type ProgressSummaryMetric = {
+  id: string;
+  metricType: string;
+  label: string;
+  startValue: number;
+  currentValue: number;
+  goalValue: number;
+  unit: string;
+  deltaFromStart: number;
+  deltaToGoal: number;
+};
+export type ProgressSummary = {
+  generatedAt: string;
+  client: { id: string; name: string; email: string };
+  program: {
+    id: string;
+    name: string;
+    status: string;
+    startDate: string;
+    targetEndDate: string | null;
+  };
+  metrics: ProgressSummaryMetric[];
+  latestSnapshot: {
+    id: string;
+    date: string;
+    values: { metricType: string; label: string; currentValue: number; unit: string }[];
+  } | null;
+  metricSnapshots: {
+    id: string;
+    date: string;
+    values: { metricType: string; label: string; currentValue: number; unit: string }[];
+  }[];
+  progressPhotos: {
+    id: string;
+    date: string;
+    frontUrl: string | null;
+    sideUrl: string | null;
+    backUrl: string | null;
+    photoCount: number;
+  }[];
+  weightTrend: { date: string; weight: number }[];
+  bodyCompositionTrend: {
+    date: string;
+    weight: number | null;
+    bodyFat: number | null;
+    waist: number | null;
+  }[];
+  bloodPanels: BloodPanelSummary[];
 };

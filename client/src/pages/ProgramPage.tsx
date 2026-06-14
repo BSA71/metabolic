@@ -7,7 +7,7 @@ import { ProgramMetricTable } from '../components/program/ProgramMetricTable';
 import { ProgramMetricSnapshotHistory } from '../components/program/ProgramMetricSnapshotHistory';
 import { SnapshotTrackingSection } from '../components/program/SnapshotTrackingSection';
 import { todayKey } from '../services/api';
-import type { ProgramMetricSnapshot, ProgressPhotoSet } from '../types';
+import type { ProgramMetricSnapshot, ProgressPhotoSet, BloodPanelSummary } from '../types';
 
 function normalizeMetric(metric: ProgramMetric): ProgramMetric {
   return {
@@ -37,12 +37,22 @@ export function ProgramPage() {
   const [metrics, setMetrics] = useState<ProgramMetric[]>([]);
   const [snapshots, setSnapshots] = useState<ProgramMetricSnapshot[]>([]);
   const [progressPhotos, setProgressPhotos] = useState<ProgressPhotoSet[]>([]);
+  const [bloodPanels, setBloodPanels] = useState<BloodPanelSummary[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const [metricsDrawerOpen, setMetricsDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [error, setError] = useState('');
   const [snapshotError, setSnapshotError] = useState('');
+
+  const loadBloodPanels = useCallback(async (userId: string) => {
+    try {
+      const rows = await api<BloodPanelSummary[]>(`/api/blood-panels/${userId}`);
+      setBloodPanels(rows);
+    } catch {
+      setBloodPanels([]);
+    }
+  }, []);
 
   const loadProgressPhotos = useCallback(async (programId: string) => {
     try {
@@ -75,10 +85,11 @@ export function ProgramPage() {
       setProgram(active);
       setMetrics((active?.metrics ?? []).map(normalizeMetric));
       if (active) {
-        await Promise.all([loadSnapshots(active.id), loadProgressPhotos(active.id)]);
+        await Promise.all([loadSnapshots(active.id), loadProgressPhotos(active.id), loadBloodPanels(active.userId)]);
       } else {
         setSnapshots([]);
         setProgressPhotos([]);
+        setBloodPanels([]);
         setSelectedSnapshotId(null);
       }
     } catch (err) {
@@ -87,7 +98,7 @@ export function ProgramPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadSnapshots, loadProgressPhotos]);
+  }, [loadSnapshots, loadProgressPhotos, loadBloodPanels]);
 
   useEffect(() => {
     void loadProgram();
@@ -119,6 +130,14 @@ export function ProgramPage() {
       const index = current.findIndex((photoSet) => photoSet.id === updated.id);
       if (index === -1) return [updated, ...current].sort((a, b) => b.date.localeCompare(a.date));
       return current.map((photoSet) => (photoSet.id === updated.id ? updated : photoSet));
+    });
+  }
+
+  function upsertBloodPanel(updated: BloodPanelSummary) {
+    setBloodPanels((current) => {
+      const index = current.findIndex((panel) => panel.id === updated.id);
+      if (index === -1) return [updated, ...current].sort((a, b) => b.labDate.localeCompare(a.labDate));
+      return current.map((panel) => (panel.id === updated.id ? updated : panel));
     });
   }
 
@@ -190,10 +209,13 @@ export function ProgramPage() {
         />
         <SnapshotTrackingSection
           programId={program.id}
+          userId={program.userId}
           snapshots={snapshots}
           progressPhotos={progressPhotos}
+          bloodPanels={bloodPanels}
           onSnapshotUpdated={upsertSnapshot}
           onProgressPhotosUpdated={upsertProgressPhoto}
+          onBloodPanelUpdated={upsertBloodPanel}
         />
         {error && <p className="text-sm text-red-600">{error}</p>}
         {snapshotError && <p className="text-sm text-red-600">{snapshotError}</p>}
