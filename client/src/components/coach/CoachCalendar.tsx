@@ -61,7 +61,8 @@ const ACTIVITY_FILTER_OPTIONS: { value: CoachCalendarEventType; label: string }[
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
-const selectClassName = 'rounded-xl border border-app-border bg-app-surface px-3 py-2 text-sm';
+const filterSelectClassName =
+  'h-10 rounded-xl border border-app-border bg-app-surface px-3 text-sm leading-none';
 
 function formatSelectedDay(date: string) {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', {
@@ -330,7 +331,7 @@ export function CoachCalendar({
 
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
           <select
-            className={selectClassName}
+            className={filterSelectClassName}
             value={groupId}
             aria-label="Filter by group"
             onChange={(event) => onGroupChange(event.target.value)}
@@ -352,7 +353,7 @@ export function CoachCalendar({
             <UsersRound className="h-[1.375rem] w-[1.375rem]" />
           </button>
           <select
-            className={selectClassName}
+            className={filterSelectClassName}
             value={filterUserId}
             aria-label="Filter by client"
             onChange={(event) => setFilterUserId(event.target.value)}
@@ -371,8 +372,8 @@ export function CoachCalendar({
               aria-expanded={activityMenuOpen}
               aria-haspopup="listbox"
               className={clsx(
-                selectClassName,
-                'inline-flex min-w-[10rem] items-center justify-between gap-2 text-left'
+                filterSelectClassName,
+                'inline-flex items-center justify-between gap-2 text-left'
               )}
               onClick={() => setActivityMenuOpen((open) => !open)}
             >

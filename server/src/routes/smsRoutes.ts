@@ -1,13 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { handleSms } from '../services/smsIntentService.js';
-
-function normalizePhone(from: string) {
-  let phone = from.replace(/^whatsapp:/i, '').trim();
-  if (phone && !phone.startsWith('+')) {
-    phone = `+${phone}`;
-  }
-  return phone;
-}
+import { normalizePhone } from '../utils/phone.js';
 
 export async function smsRoutes(app: FastifyInstance) {
   app.post('/api/sms/webhook', async (request, reply) => {

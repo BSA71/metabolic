@@ -181,6 +181,7 @@ export type CoachClient = {
   lastName: string;
   email: string;
   phone?: string | null;
+  textPhone?: string | null;
   status: UserStatus;
   assignedAt: string;
   activeProgram: { id: string; name: string; startDate: string; currentWeight: number | null; metricCount: number } | null;
