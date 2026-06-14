@@ -185,6 +185,8 @@ model User {
   userAssignments CoachAssignment[] @relation("UserAssignments")
   clientGroups ClientGroup[] @relation("CoachClientGroups")
   clientGroupMemberships ClientGroupMember[]
+  coachCheckIns CoachCheckIn[] @relation("CoachCheckIns")
+  clientCheckIns CoachCheckIn[] @relation("ClientCheckIns")
   mealTemplates MealTemplate[]
   nutritionPlanTemplatesCreated NutritionPlanTemplate[] @relation("NutritionPlanTemplateCreator")
   exerciseTemplatesCreated ExerciseTemplate[] @relation("ExerciseTemplateCreator")
@@ -253,6 +255,21 @@ model ClientGroupMember {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([groupId, userId])
   @@index([userId])
+}
+
+model CoachCheckIn {
+  id String @id @default(cuid())
+  coachId String
+  userId String
+  startsAt DateTime
+  durationMinutes Int
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  coach User @relation("CoachCheckIns", fields: [coachId], references: [id], onDelete: Cascade)
+  user User @relation("ClientCheckIns", fields: [userId], references: [id], onDelete: Cascade)
+  @@index([coachId, startsAt])
+  @@index([userId, startsAt])
 }
 
 model Program {
