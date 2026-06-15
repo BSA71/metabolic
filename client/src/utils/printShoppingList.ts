@@ -1,7 +1,6 @@
 import type { ShoppingListResult } from '../types';
 import { escapeHtml } from './exportFormat';
 import { printHtmlDocument } from './printDocument';
-import { formatPlannedMealContext } from './shoppingListFormat';
 
 function formatRangeLabel(result: ShoppingListResult) {
   if (result.startDate === result.endDate) return result.startDate;
@@ -14,23 +13,16 @@ function buildShoppingListHtml(result: ShoppingListResult) {
     .map((section) => {
       const itemsHtml = section.items
         .map((item) => {
-          const planned = formatPlannedMealContext(item);
-          const location = result.storeName && item.storeLocation
-            ? `<span class="location">${escapeHtml(item.storeLocation)}</span>`
-            : '';
-          const notes = item.notes ? `<p class="notes">${escapeHtml(item.notes)}</p>` : '';
+          const location =
+            result.storeName && item.storeLocation
+              ? `<span class="location">${escapeHtml(item.storeLocation)}</span>`
+              : '';
 
           return `
             <li class="item">
               <span class="checkbox" aria-hidden="true"></span>
-              <div class="item-body">
-                <div class="item-row">
-                  <p class="item-title">${escapeHtml(item.groceryDescription)}</p>
-                  ${location}
-                </div>
-                <p class="item-meta">${escapeHtml(planned)}</p>
-                ${notes}
-              </div>
+              <span class="item-title">${escapeHtml(item.groceryDescription)}</span>
+              ${location}
             </li>
           `;
         })
@@ -58,36 +50,37 @@ function buildShoppingListHtml(result: ShoppingListResult) {
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        padding: 32px;
-        font-size: 12px;
-        line-height: 1.45;
+        padding: 0.3in;
+        font-size: 9px;
+        line-height: 1.25;
       }
       header {
-        border-bottom: 2px solid #1f2933;
-        margin-bottom: 24px;
-        padding-bottom: 16px;
+        border-bottom: 1px solid #1f2933;
+        margin-bottom: 10px;
+        padding-bottom: 6px;
       }
       h1 {
-        margin: 0 0 6px;
-        font-size: 24px;
-        letter-spacing: -0.02em;
-      }
-      .subtitle, .intro, .footnote {
         margin: 0;
-        color: #4b5563;
+        font-size: 14px;
+        letter-spacing: -0.01em;
       }
-      .intro {
-        margin-top: 16px;
-        font-size: 13px;
+      .subtitle {
+        margin: 2px 0 0;
+        color: #4b5563;
+        font-size: 9px;
+      }
+      .sections {
+        column-count: 2;
+        column-gap: 18px;
       }
       .section {
         break-inside: avoid;
-        margin-bottom: 20px;
+        margin-bottom: 10px;
       }
       .section h2 {
-        margin: 0 0 8px;
-        font-size: 11px;
-        letter-spacing: 0.08em;
+        margin: 0 0 3px;
+        font-size: 8px;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
         color: #6b7280;
       }
@@ -95,58 +88,42 @@ function buildShoppingListHtml(result: ShoppingListResult) {
         list-style: none;
         margin: 0;
         padding: 0;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        overflow: hidden;
       }
       .item {
-        display: flex;
-        gap: 12px;
-        padding: 12px 14px;
-        border-top: 1px solid #e5e7eb;
+        display: grid;
+        grid-template-columns: 10px minmax(0, 1fr) auto;
+        gap: 5px;
+        align-items: start;
+        padding: 1px 0;
+        break-inside: avoid;
       }
-      .item:first-child { border-top: none; }
       .checkbox {
-        width: 14px;
-        height: 14px;
-        margin-top: 2px;
-        border: 1.5px solid #374151;
-        border-radius: 3px;
-        flex-shrink: 0;
-      }
-      .item-body { min-width: 0; flex: 1; }
-      .item-row {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: flex-start;
+        width: 9px;
+        height: 9px;
+        margin-top: 1px;
+        border: 1px solid #374151;
+        border-radius: 1px;
       }
       .item-title {
         margin: 0;
-        font-size: 14px;
-        font-weight: 600;
+        font-size: 9px;
+        font-weight: 500;
       }
       .location {
         flex-shrink: 0;
-        border-radius: 999px;
-        background: #f3f4f6;
-        padding: 2px 8px;
-        font-size: 10px;
-        font-weight: 600;
-        color: #374151;
-      }
-      .item-meta, .notes {
-        margin: 4px 0 0;
+        font-size: 7px;
         color: #6b7280;
-        font-size: 11px;
+        white-space: nowrap;
       }
       .footnote {
-        margin-top: 24px;
-        font-size: 10px;
+        margin: 8px 0 0;
+        color: #9ca3af;
+        font-size: 7px;
+        line-height: 1.3;
       }
       @media print {
-        body { padding: 0.5in; }
-        @page { margin: 0.5in; }
+        body { padding: 0.25in; }
+        @page { margin: 0.35in; size: portrait; }
       }
     </style>
   </head>
@@ -154,9 +131,8 @@ function buildShoppingListHtml(result: ShoppingListResult) {
     <header>
       <h1>${escapeHtml(title)}</h1>
       <p class="subtitle">${escapeHtml(formatRangeLabel(result))} · ${result.itemCount} item${result.itemCount === 1 ? '' : 's'}</p>
-      ${result.intro ? `<p class="intro">${escapeHtml(result.intro)}</p>` : ''}
     </header>
-    ${sectionsHtml}
+    <div class="sections">${sectionsHtml}</div>
     <p class="footnote">${escapeHtml(result.note)}</p>
   </body>
 </html>`;

@@ -34,10 +34,8 @@ export function formatShoppingListForShare(result: ShoppingListResult) {
   for (const section of result.sections) {
     lines.push(section.title);
     for (const item of section.items) {
-      lines.push(`- ${item.groceryDescription}`);
-      if (result.storeName && item.storeLocation) {
-        lines.push(`  ${item.storeLocation}`);
-      }
+      const location = result.storeName && item.storeLocation ? `, ${item.storeLocation}` : '';
+      lines.push(`☐ ${item.groceryDescription}${location}`);
     }
     lines.push('');
   }

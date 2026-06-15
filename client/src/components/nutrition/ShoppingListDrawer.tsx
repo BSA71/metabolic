@@ -87,18 +87,6 @@ export function ShoppingListDrawer({
     saveSupermarket(trimmed);
   }
 
-  function shoppingListExportPath() {
-    const params = new URLSearchParams({
-      startDate: range.startDate,
-      endDate: range.endDate,
-      anchorDate
-    });
-    if (appliedStoreName.trim()) {
-      params.set('storeName', appliedStoreName.trim());
-    }
-    return `/nutrition/shopping-list/export?${params.toString()}`;
-  }
-
   function handlePrint() {
     if (!result?.itemCount) return;
     setPrintError(null);
@@ -143,23 +131,11 @@ export function ShoppingListDrawer({
               className={iconButtonClassName}
               onClick={handlePrint}
               disabled={loading || !result?.itemCount}
-              aria-label="Quick print"
-              title="Quick print"
+              aria-label="Print or save PDF"
+              title="Print or save PDF"
             >
               <Printer className="h-4 w-4" />
             </Button>
-            <a
-              href={shoppingListExportPath()}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open printable shopping list"
-              title="Open printable shopping list"
-              className={`inline-flex items-center justify-center rounded-xl bg-app-surface px-2.5 py-2 text-app-text ring-1 ring-inset ring-app-border transition hover:bg-app-muted ${
-                loading || !result?.itemCount ? 'pointer-events-none opacity-50' : ''
-              }`}
-            >
-              <span className="text-xs font-semibold">PDF</span>
-            </a>
             <Button
               type="button"
               variant="secondary"

@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import { env } from '../config/env.js';
+import { formatGroceryDescription } from '../utils/groceryConversion.js';
 
 export type FoodEstimate = {
   normalizedFoodName: string;
@@ -223,7 +224,10 @@ Return JSON only: { "intro": string, "options": [ { "name": string, "description
 Return 3 practical, distinct options. Keep intro conversational and under 220 characters. Keep each description under 160 characters.`;
 
 const SHOPPING_LIST_PROMPT = `Convert planned meal items into practical grocery-store shopping quantities.
-Use packages, weights, counts, bunches, bags, cartons, and other units shoppers actually buy.
+Use packages, weights, counts, bunches, bags, and other units shoppers actually buy.
+When planned unit is "serving", read the portion size from the food name (e.g. "1 cup almond milk" × 12 servings = 1 gallon almond milk).
+When the planned amount is in cups, ounces, milliliters, or servings of liquids, convert to store sizes such as quart, half gallon, gallon, loaf, lb block, or bottle — never output "12 grocery portion(s)" or repeat the per-serving amount.
+Do not repeat the meal-plan portion in groceryDescription (e.g. avoid "1 cup" in the product name).
 Round up slightly when needed so the shopper has enough for the planned amount.
 If a store name is provided, include a typical aisle or section for that chain. Approximate is fine.
 If no store is provided, set storeLocation to null and use a sensible groceryCategory such as Produce, Meat & Seafood, Dairy & Eggs, Bakery, Pantry, Frozen, Beverages, or Other.
@@ -413,43 +417,29 @@ function parseEnrichedShoppingListResponse(text: string, expectedIds: string[]):
 
 function mockGroceryDescription(item: ShoppingListInputItem, storeName: string | null): EnrichedShoppingListItem {
   const lower = item.name.toLowerCase();
-  const qty = item.quantity;
-  const unit = item.unit.toLowerCase();
-  let groceryDescription = `${qty} ${item.unit} ${item.name}`;
+  const groceryDescription = formatGroceryDescription(item.name, item.quantity, item.unit);
   let groceryCategory = 'Other';
   let storeLocation: string | null = null;
   let notes: string | null = null;
 
-  if (/egg/.test(lower)) {
-    groceryDescription = `${Math.max(1, Math.ceil(qty / 2))} dozen eggs`;
+  if (/egg|milk|yogurt|cheese|butter|cream/.test(lower)) {
     groceryCategory = 'Dairy & Eggs';
     storeLocation = storeName ? 'Dairy / Aisle 16' : null;
-  } else if (/chicken|turkey|beef|steak|salmon|fish|shrimp|pork/.test(lower)) {
-    const pounds = Math.max(0.5, Math.ceil((unit.includes('serv') ? qty * 0.25 : qty) * 2) / 2);
-    groceryDescription = `${pounds} lb ${item.name}`;
-    groceryCategory = /fish|salmon|shrimp/.test(lower) ? 'Meat & Seafood' : 'Meat & Seafood';
+  } else if (/chicken|turkey|beef|steak|salmon|fish|shrimp|pork|sausage|bacon|ground/.test(lower)) {
+    groceryCategory = 'Meat & Seafood';
     storeLocation = storeName ? 'Meat & Seafood counter' : null;
-  } else if (/rice|oats|pasta|quinoa|bean|lentil/.test(lower)) {
-    groceryDescription = `${Math.max(1, Math.ceil(qty))} ${/rice|oats|pasta|quinoa/.test(lower) ? 'lb bag' : 'can(s)'} ${item.name}`;
+  } else if (/rice|oats|pasta|quinoa|bean|lentil|flour|sugar|cereal/.test(lower)) {
     groceryCategory = 'Pantry';
     storeLocation = storeName ? 'Pantry / Aisle 4' : null;
-  } else if (/spinach|lettuce|broccoli|asparagus|pepper|tomato|onion|garlic|avocado|banana|apple|berry|fruit|veget/.test(lower)) {
-    groceryDescription = /banana|apple|avocado|onion|garlic/.test(lower)
-      ? `${Math.max(1, Math.ceil(qty))} ${item.name}`
-      : `${Math.max(1, Math.ceil(qty))} ${/spinach|lettuce/.test(lower) ? 'bag/bunch' : 'lb'} ${item.name}`;
+  } else if (/spinach|lettuce|broccoli|asparagus|pepper|tomato|onion|garlic|avocado|banana|apple|berry|fruit|veget|carrot|celery|zucchini|mushroom|cucumber/.test(lower)) {
     groceryCategory = 'Produce';
     storeLocation = storeName ? 'Produce section' : null;
-  } else if (/milk|yogurt|cheese|butter|cream/.test(lower)) {
-    groceryDescription = `${Math.max(1, Math.ceil(qty))} ${/cheese/.test(lower) ? 'package' : 'carton'} ${item.name}`;
-    groceryCategory = 'Dairy & Eggs';
-    storeLocation = storeName ? 'Dairy / Aisle 16' : null;
   } else if (/bread|tortilla|wrap|bun/.test(lower)) {
-    groceryDescription = `${Math.max(1, Math.ceil(qty))} package ${item.name}`;
     groceryCategory = 'Bakery';
     storeLocation = storeName ? 'Bakery / Aisle 2' : null;
-  } else if (unit.includes('serv')) {
-    groceryDescription = `${Math.max(1, Math.ceil(qty))} grocery portion(s) ${item.name}`;
-    notes = 'Estimated from planned servings.';
+  } else if (/juice|water|broth|stock|coffee|tea|wine|vinegar|oil|sauce|dressing|beverage|drink|soda|beer|smoothie/.test(lower)) {
+    groceryCategory = 'Beverages';
+    storeLocation = storeName ? 'Beverages / Aisle 8' : null;
   }
 
   return {

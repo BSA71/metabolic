@@ -111,6 +111,16 @@ textarea {
   }
 
   @page {
-    margin: 0.5in;
+    margin: 0.35in;
+  }
+
+  .export-content header h1 {
+    font-size: 14px !important;
+    margin-top: 0.5rem !important;
+  }
+
+  .export-content header .mt-2 {
+    margin-top: 0.25rem !important;
+    font-size: 9px !important;
   }
 }

@@ -2,6 +2,7 @@ import { MealItemType } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { getAiProvider, MockAiProvider, type EnrichedShoppingListResult, type ShoppingListInputItem } from './aiService.js';
 import { addUtcDays, parseDateParam, toDateKey } from '../utils/dates.js';
+import { formatGroceryDescription, isPoorGroceryDescription } from '../utils/groceryConversion.js';
 import { n, round } from '../utils/numbers.js';
 
 export type GroceryListItem = {
@@ -74,13 +75,19 @@ function mergeEnrichment(inputItems: ShoppingListInputItem[], enriched: Enriched
 
   return inputItems.map((item) => {
     const match = byId.get(item.id);
+    const aiDescription = match?.groceryDescription;
+    const groceryDescription =
+      aiDescription && !isPoorGroceryDescription(aiDescription, item)
+        ? aiDescription
+        : formatGroceryDescription(item.name, item.quantity, item.unit);
+
     return {
       id: item.id,
       plannedName: item.name,
       plannedQuantity: item.quantity,
       plannedUnit: item.unit,
       occurrenceCount: item.occurrenceCount,
-      groceryDescription: match?.groceryDescription ?? `${item.quantity} ${item.unit} ${item.name}`,
+      groceryDescription,
       groceryCategory: match?.groceryCategory ?? 'Other',
       storeLocation: match?.storeLocation ?? null,
       notes: match?.notes ?? null
