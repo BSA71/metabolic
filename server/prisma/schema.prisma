@@ -1,0 +1,873 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  COACH
+  USER
+  VIEWER
+}
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+enum ProgramStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+enum MetricType {
+  WEIGHT
+  BODY_FAT
+  WAIST
+  HIPS
+  CHEST
+  LEAN_TISSUE_MASS
+  FAT_MASS
+  CALORIES
+  PROTEIN
+  CARBS
+  FAT
+}
+enum MealStatus {
+  PLANNED
+  UPCOMING
+  EATEN_AS_PLANNED
+  MODIFIED
+  SKIPPED
+  MISSED
+  UNPLANNED
+}
+enum MealItemType {
+  PLANNED
+  ACTUAL
+}
+enum FoodSource {
+  MANUAL
+  AI
+  IMPORTED
+  VERIFIED
+}
+enum Visibility {
+  GLOBAL
+  USER
+}
+enum ExerciseStatus {
+  PLANNED
+  DONE
+  SKIPPED
+  MISSED
+}
+enum Difficulty {
+  EASY
+  NORMAL
+  HARD
+}
+enum SmsDirection {
+  INBOUND
+  OUTBOUND
+}
+enum SmsStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+enum LevelStatus {
+  LOCKED
+  PREVIEW
+  ACTIVE
+  COMPLETED
+}
+enum BadgeStatus {
+  LOCKED
+  IN_PROGRESS
+  EARNED
+}
+enum StreakStatus {
+  ACTIVE
+  AT_RISK
+  PRESERVED_BY_GRACE_DAY
+  RESET
+  RECOVERED
+}
+enum StreakType {
+  FOOD_LOGGING_DAILY
+  DAILY_WIN
+  WATER_GOAL_DAILY
+  DAILY_CHECK_IN
+  WEEKLY_SNAPSHOT
+  WEEKLY_MEASUREMENTS
+  WEEKLY_PHOTOS
+  WEEKLY_REFLECTION
+  WEEKLY_FOCUS_GOAL
+}
+enum StreakEventType {
+  COMPLETED
+  MISSED
+  GRACE_DAY_USED
+  RESET
+  RECOVERED
+}
+enum GamificationMealLogStatus {
+  ATE_AS_PLANNED
+  ATE_SOMETHING_DIFFERENT
+  SKIPPED_MEAL
+  EXTRA_ITEM
+}
+enum MealCategory {
+  DIFFERENT_HEALTHY_OPTION
+  RESTAURANT_MEAL
+  LARGER_PORTION
+  SWEET_TREAT
+  SNACK
+  ALCOHOL
+  OTHER
+}
+enum BadgeCategory {
+  GETTING_STARTED
+  CONSISTENCY
+  HONEST_TRACKING
+  PROGRESS
+  HABIT
+}
+enum BadgeTier {
+  BRONZE
+  SILVER
+  GOLD
+}
+enum DailyFoodLogStatus {
+  IN_PROGRESS
+  COMPLETE
+}
+enum ProgressSnapshotStatus {
+  DRAFT
+  COMPLETE
+}
+
+model User {
+  id String @id @default(cuid())
+  firebaseUid String @unique
+  email String @unique
+  firstName String
+  lastName String
+  phone String?
+  gender String?
+  birthDate DateTime? @db.Date
+  role Role @default(USER)
+  status UserStatus @default(ACTIVE)
+  coachCode String? @unique
+  coachRequestedAt DateTime?
+  defaultNutritionTemplateId String?
+  defaultExerciseTemplateId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organizations UserOrganization[]
+  coachedPrograms Program[] @relation("ProgramCoach")
+  programs Program[] @relation("ProgramUser")
+  dailyLogs DailyLog[]
+  meals Meal[]
+  mealItemsCreated Food[] @relation("FoodCreator")
+  ownedFoods Food[] @relation("FoodOwner")
+  scheduledExercises ScheduledExercise[]
+  exerciseLogs ExerciseLog[]
+  aiFoodLookups AiFoodLookup[]
+  aiExerciseLookups AiExerciseLookup[]
+  smsMessages SmsMessage[]
+  coachAssignments CoachAssignment[] @relation("CoachAssignments")
+  userAssignments CoachAssignment[] @relation("UserAssignments")
+  clientGroups ClientGroup[] @relation("CoachClientGroups")
+  clientGroupMemberships ClientGroupMember[]
+  coachCheckIns CoachCheckIn[] @relation("CoachCheckIns")
+  clientCheckIns CoachCheckIn[] @relation("ClientCheckIns")
+  mealTemplates MealTemplate[]
+  nutritionPlanTemplatesCreated NutritionPlanTemplate[] @relation("NutritionPlanTemplateCreator")
+  exerciseTemplatesCreated ExerciseTemplate[] @relation("ExerciseTemplateCreator")
+  levelProgress UserLevelProgress[]
+  badges UserBadge[]
+  streaks UserStreak[]
+  streakEvents StreakEvent[]
+  dailyFoodLogs DailyFoodLog[]
+  progressSnapshots ProgressSnapshot[]
+  weeklyReflections WeeklyReflection[]
+  bloodPanels BloodPanel[] @relation("BloodPanelUser")
+  bloodPanelsEntered BloodPanel[] @relation("BloodPanelEnteredBy")
+  defaultNutritionTemplate NutritionPlanTemplate? @relation("CoachDefaultNutritionTemplate", fields: [defaultNutritionTemplateId], references: [id], onDelete: SetNull)
+  defaultExerciseTemplate ExerciseTemplate? @relation("CoachDefaultExerciseTemplate", fields: [defaultExerciseTemplateId], references: [id], onDelete: SetNull)
+}
+
+model BloodPanel {
+  id String @id @default(cuid())
+  userId String
+  labDate DateTime @db.Date
+  labProvider String?
+  glucose Decimal? @db.Decimal(10, 2)
+  totalCholesterol Decimal? @db.Decimal(10, 2)
+  hdl Decimal? @db.Decimal(10, 2)
+  ldl Decimal? @db.Decimal(10, 2)
+  triglycerides Decimal? @db.Decimal(10, 2)
+  hemoglobinA1c Decimal? @db.Decimal(10, 2)
+  insulin Decimal? @db.Decimal(10, 2)
+  testosterone Decimal? @db.Decimal(10, 2)
+  notes String?
+  enteredByUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation("BloodPanelUser", fields: [userId], references: [id], onDelete: Cascade)
+  enteredBy User? @relation("BloodPanelEnteredBy", fields: [enteredByUserId], references: [id], onDelete: SetNull)
+  @@index([userId])
+  @@index([userId, labDate(sort: Desc)])
+}
+
+model BloodPanelReferenceRange {
+  id String @id @default(cuid())
+  metricKey String
+  gender String
+  ageMin Int
+  ageMax Int
+  lowMax Decimal? @db.Decimal(10, 2)
+  normalMin Decimal @db.Decimal(10, 2)
+  normalMax Decimal @db.Decimal(10, 2)
+  highMin Decimal? @db.Decimal(10, 2)
+  unit String
+  description String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([metricKey, gender, ageMin, ageMax])
+}
+
+model Organization {
+  id String @id @default(cuid())
+  name String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users UserOrganization[]
+  programs Program[]
+}
+
+model UserOrganization {
+  id String @id @default(cuid())
+  userId String
+  organizationId String
+  role Role @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([userId, organizationId])
+}
+
+model CoachAssignment {
+  id String @id @default(cuid())
+  coachId String
+  userId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  coach User @relation("CoachAssignments", fields: [coachId], references: [id], onDelete: Cascade)
+  user User @relation("UserAssignments", fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([coachId, userId])
+  @@unique([userId])
+}
+
+model ClientGroup {
+  id String @id @default(cuid())
+  coachId String
+  name String
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  coach User @relation("CoachClientGroups", fields: [coachId], references: [id], onDelete: Cascade)
+  members ClientGroupMember[]
+  @@index([coachId])
+}
+
+model ClientGroupMember {
+  id String @id @default(cuid())
+  groupId String
+  userId String
+  createdAt DateTime @default(now())
+  group ClientGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+model CoachCheckIn {
+  id String @id @default(cuid())
+  coachId String
+  userId String
+  startsAt DateTime
+  durationMinutes Int
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  coach User @relation("CoachCheckIns", fields: [coachId], references: [id], onDelete: Cascade)
+  user User @relation("ClientCheckIns", fields: [userId], references: [id], onDelete: Cascade)
+  @@index([coachId, startsAt])
+  @@index([userId, startsAt])
+}
+
+model Program {
+  id String @id @default(cuid())
+  userId String
+  organizationId String?
+  coachId String?
+  name String
+  status ProgramStatus @default(DRAFT)
+  startDate DateTime
+  targetEndDate DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation("ProgramUser", fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  coach User? @relation("ProgramCoach", fields: [coachId], references: [id])
+  metrics ProgramMetric[]
+  metricSnapshots ProgramMetricSnapshot[]
+  progressPhotoSets ProgramProgressPhotoSet[]
+  dailyLogs DailyLog[]
+  scheduledExercises ScheduledExercise[]
+  defaultNutritionTemplateId String?
+  defaultNutritionTemplate NutritionPlanTemplate? @relation(fields: [defaultNutritionTemplateId], references: [id], onDelete: SetNull)
+  defaultExerciseTemplateId String?
+  defaultExerciseTemplate ExerciseTemplate? @relation(fields: [defaultExerciseTemplateId], references: [id], onDelete: SetNull)
+}
+
+model ProgramMetric {
+  id String @id @default(cuid())
+  programId String
+  metricType MetricType
+  startValue Decimal @db.Decimal(10, 2)
+  currentValue Decimal @db.Decimal(10, 2)
+  goalValue Decimal @db.Decimal(10, 2)
+  unit String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  @@unique([programId, metricType])
+}
+
+model ProgramMetricSnapshot {
+  id String @id @default(cuid())
+  programId String
+  date DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  values ProgramMetricSnapshotValue[]
+  @@unique([programId, date])
+}
+
+model ProgramMetricSnapshotValue {
+  id String @id @default(cuid())
+  snapshotId String
+  metricType MetricType
+  currentValue Decimal @db.Decimal(10, 2)
+  unit String
+  snapshot ProgramMetricSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  @@unique([snapshotId, metricType])
+}
+
+model ProgramProgressPhotoSet {
+  id String @id @default(cuid())
+  programId String
+  date DateTime
+  frontUrl String?
+  sideUrl String?
+  backUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  @@unique([programId, date])
+}
+
+model DailyLog {
+  id String @id @default(cuid())
+  programId String
+  userId String
+  date DateTime
+  weight Decimal? @db.Decimal(10, 2)
+  bodyFat Decimal? @db.Decimal(10, 2)
+  waist Decimal? @db.Decimal(10, 2)
+  calorieTarget Decimal @db.Decimal(10, 2)
+  proteinTarget Decimal @db.Decimal(10, 2)
+  carbTarget Decimal @db.Decimal(10, 2)
+  fatTarget Decimal @db.Decimal(10, 2)
+  caloriesActual Decimal @default(0) @db.Decimal(10, 2)
+  proteinActual Decimal @default(0) @db.Decimal(10, 2)
+  carbsActual Decimal @default(0) @db.Decimal(10, 2)
+  fatActual Decimal @default(0) @db.Decimal(10, 2)
+  mealsPlanned Int @default(0)
+  mealsCompleted Int @default(0)
+  exercisesPlanned Int @default(0)
+  exercisesCompleted Int @default(0)
+  complianceScore Decimal? @db.Decimal(5, 2)
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meals Meal[]
+  dailyFoodLog DailyFoodLog?
+  @@unique([userId, date])
+}
+
+model Meal {
+  id String @id @default(cuid())
+  dailyLogId String
+  userId String
+  mealNumber Int
+  name String
+  plannedTime String?
+  status MealStatus @default(PLANNED)
+  plannedCalories Decimal @default(0) @db.Decimal(10, 2)
+  plannedProtein Decimal @default(0) @db.Decimal(10, 2)
+  plannedCarbs Decimal @default(0) @db.Decimal(10, 2)
+  plannedFat Decimal @default(0) @db.Decimal(10, 2)
+  actualCalories Decimal @default(0) @db.Decimal(10, 2)
+  actualProtein Decimal @default(0) @db.Decimal(10, 2)
+  actualCarbs Decimal @default(0) @db.Decimal(10, 2)
+  actualFat Decimal @default(0) @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  dailyLog DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items MealItem[]
+  gamificationLog GamificationMealLog?
+}
+
+model MealItem {
+  id String @id @default(cuid())
+  mealId String
+  foodId String?
+  type MealItemType
+  linkedPlannedItemId String?
+  nameSnapshot String
+  quantity Decimal @db.Decimal(10, 2)
+  unit String
+  calories Decimal @db.Decimal(10, 2)
+  protein Decimal @db.Decimal(10, 2)
+  carbs Decimal @db.Decimal(10, 2)
+  fat Decimal @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food Food? @relation(fields: [foodId], references: [id])
+  linkedPlannedItem MealItem? @relation("PlannedToActual", fields: [linkedPlannedItemId], references: [id], onDelete: SetNull)
+  derivedActualItems MealItem[] @relation("PlannedToActual")
+}
+
+model Food {
+  id String @id @default(cuid())
+  name String
+  brand String?
+  servingSize Decimal @db.Decimal(10, 2)
+  servingUnit String
+  calories Decimal @db.Decimal(10, 2)
+  protein Decimal @db.Decimal(10, 2)
+  carbs Decimal @db.Decimal(10, 2)
+  fat Decimal @db.Decimal(10, 2)
+  fiber Decimal? @db.Decimal(10, 2)
+  sugar Decimal? @db.Decimal(10, 2)
+  sodium Decimal? @db.Decimal(10, 2)
+  source FoodSource @default(MANUAL)
+  visibility Visibility @default(USER)
+  ownerUserId String?
+  aiGenerated Boolean @default(false)
+  verified Boolean @default(false)
+  createdById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ownerUser User? @relation("FoodOwner", fields: [ownerUserId], references: [id])
+  createdBy User? @relation("FoodCreator", fields: [createdById], references: [id])
+  aliases FoodAlias[]
+  mealItems MealItem[]
+  nutritionTemplateMealItems NutritionTemplateMealItem[]
+  lookups AiFoodLookup[]
+}
+
+model FoodAlias {
+  id String @id @default(cuid())
+  foodId String
+  alias String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  @@unique([foodId, alias])
+}
+
+model Exercise {
+  id String @id @default(cuid())
+  name String
+  category String?
+  bodyPart String?
+  description String?
+  defaultSets Int?
+  defaultReps Int?
+  defaultDurationMinutes Int?
+  defaultDistance Decimal? @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  scheduledExercises ScheduledExercise[]
+  templateItems ExerciseTemplateItem[]
+  aiLookups AiExerciseLookup[]
+}
+
+model ScheduledExercise {
+  id String @id @default(cuid())
+  programId String
+  userId String
+  exerciseId String
+  scheduledDate DateTime
+  sets Int?
+  reps Int?
+  durationMinutes Int?
+  distance Decimal? @db.Decimal(10, 2)
+  weight Decimal? @db.Decimal(10, 2)
+  status ExerciseStatus @default(PLANNED)
+  sortOrder Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+  log ExerciseLog?
+}
+
+model ExerciseLog {
+  id String @id @default(cuid())
+  scheduledExerciseId String @unique
+  userId String
+  completed Boolean @default(false)
+  completedAt DateTime?
+  actualSets Int?
+  actualReps Int?
+  actualDurationMinutes Int?
+  actualDistance Decimal? @db.Decimal(10, 2)
+  actualWeight Decimal? @db.Decimal(10, 2)
+  difficulty Difficulty?
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  scheduledExercise ScheduledExercise @relation(fields: [scheduledExerciseId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AiFoodLookup {
+  id String @id @default(cuid())
+  userId String
+  inputText String
+  normalizedFoodName String
+  calories Decimal @db.Decimal(10, 2)
+  protein Decimal @db.Decimal(10, 2)
+  carbs Decimal @db.Decimal(10, 2)
+  fat Decimal @db.Decimal(10, 2)
+  confidence Decimal? @db.Decimal(5, 2)
+  accepted Boolean @default(false)
+  foodId String?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food Food? @relation(fields: [foodId], references: [id])
+}
+
+model AiExerciseLookup {
+  id String @id @default(cuid())
+  userId String
+  inputText String
+  name String
+  description String?
+  category String?
+  bodyPart String?
+  defaultSets Int?
+  defaultReps Int?
+  defaultDurationMinutes Int?
+  confidence Decimal? @db.Decimal(5, 2)
+  accepted Boolean @default(false)
+  exerciseId String?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise? @relation(fields: [exerciseId], references: [id])
+}
+
+model SmsMessage {
+  id String @id @default(cuid())
+  userId String?
+  phone String
+  direction SmsDirection
+  message String
+  intent String?
+  response String?
+  status SmsStatus @default(RECEIVED)
+  createdAt DateTime @default(now())
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model ProgramTemplate {
+  id String @id @default(cuid())
+  name String
+  description String?
+  defaultCalories Decimal @db.Decimal(10, 2)
+  defaultProtein Decimal @db.Decimal(10, 2)
+  defaultCarbs Decimal @db.Decimal(10, 2)
+  defaultFat Decimal @db.Decimal(10, 2)
+  defaultMealCount Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MealTemplate {
+  id String @id @default(cuid())
+  userId String?
+  name String
+  description String?
+  visibility Visibility @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model ExerciseTemplate {
+  id String @id @default(cuid())
+  name String
+  description String?
+  visibility Visibility @default(GLOBAL)
+  createdById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy User? @relation("ExerciseTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  items ExerciseTemplateItem[]
+  programs Program[]
+  defaultForCoaches User[] @relation("CoachDefaultExerciseTemplate")
+}
+
+model ExerciseTemplateItem {
+  id String @id @default(cuid())
+  templateId String
+  exerciseId String
+  sortOrder Int @default(0)
+  sets Int?
+  reps Int?
+  durationMinutes Int?
+  distance Decimal? @db.Decimal(10, 2)
+  weight Decimal? @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  template ExerciseTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+}
+
+model NutritionPlanTemplate {
+  id String @id @default(cuid())
+  name String
+  description String?
+  visibility Visibility @default(GLOBAL)
+  calorieTarget Decimal @db.Decimal(10, 2)
+  proteinTarget Decimal @db.Decimal(10, 2)
+  carbTarget Decimal @db.Decimal(10, 2)
+  fatTarget Decimal @db.Decimal(10, 2)
+  createdById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy User? @relation("NutritionPlanTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  meals NutritionTemplateMeal[]
+  programs Program[]
+  defaultForCoaches User[] @relation("CoachDefaultNutritionTemplate")
+}
+
+model NutritionTemplateMeal {
+  id String @id @default(cuid())
+  templateId String
+  mealNumber Int
+  name String
+  plannedTime String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  template NutritionPlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  items NutritionTemplateMealItem[]
+  @@unique([templateId, mealNumber])
+}
+
+model NutritionTemplateMealItem {
+  id String @id @default(cuid())
+  mealId String
+  foodId String?
+  nameSnapshot String
+  quantity Decimal @db.Decimal(10, 2)
+  unit String
+  calories Decimal @db.Decimal(10, 2)
+  protein Decimal @db.Decimal(10, 2)
+  carbs Decimal @db.Decimal(10, 2)
+  fat Decimal @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  meal NutritionTemplateMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food Food? @relation(fields: [foodId], references: [id])
+}
+
+model LevelDefinition {
+  id String @id
+  name String
+  description String
+  purpose String
+  order Int @unique
+  requirements Json
+  unlocks Json
+  completionMessage String
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userProgress UserLevelProgress[]
+}
+
+model UserLevelProgress {
+  id String @id @default(cuid())
+  userId String
+  levelId String
+  status LevelStatus @default(LOCKED)
+  startedAt DateTime?
+  completedAt DateTime?
+  progressPercent Int @default(0)
+  currentStep Int @default(0)
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level LevelDefinition @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  @@unique([userId, levelId])
+}
+
+model BadgeDefinition {
+  id String @id
+  name String
+  description String
+  icon String
+  category BadgeCategory
+  requirementType String
+  requirementThreshold Int @default(1)
+  tier BadgeTier?
+  metadata Json?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userBadges UserBadge[]
+}
+
+model UserBadge {
+  id String @id @default(cuid())
+  userId String
+  badgeId String
+  status BadgeStatus @default(LOCKED)
+  progress Int @default(0)
+  earnedAt DateTime?
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge BadgeDefinition @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  @@unique([userId, badgeId])
+}
+
+model UserStreak {
+  id String @id @default(cuid())
+  userId String
+  streakType StreakType
+  currentCount Int @default(0)
+  bestCount Int @default(0)
+  lastCompletedDate DateTime?
+  graceDaysAvailable Int @default(1)
+  graceDaysUsed Int @default(0)
+  status StreakStatus @default(ACTIVE)
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, streakType])
+}
+
+model StreakEvent {
+  id String @id @default(cuid())
+  userId String
+  streakType StreakType
+  eventDate DateTime
+  eventType StreakEventType
+  relatedEntityId String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, streakType, eventDate])
+}
+
+model DailyFoodLog {
+  id String @id @default(cuid())
+  userId String
+  dailyLogId String @unique
+  date DateTime
+  completionStatus DailyFoodLogStatus @default(IN_PROGRESS)
+  dailyWinEarned Boolean @default(false)
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyLog DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  mealLogs GamificationMealLog[]
+  @@unique([userId, date])
+}
+
+model GamificationMealLog {
+  id String @id @default(cuid())
+  dailyFoodLogId String
+  mealId String @unique
+  status GamificationMealLogStatus
+  actualFoodDescription String?
+  category MealCategory?
+  photoUrl String?
+  notes String?
+  loggedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  dailyFoodLog DailyFoodLog @relation(fields: [dailyFoodLogId], references: [id], onDelete: Cascade)
+  meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+}
+
+model ProgressSnapshot {
+  id String @id @default(cuid())
+  userId String
+  programId String?
+  snapshotDate DateTime
+  weight Decimal? @db.Decimal(10, 2)
+  measurements Json?
+  extendedMeasurements Json?
+  frontPhotoUrl String?
+  sidePhotoUrl String?
+  backPhotoUrl String?
+  notes String?
+  completionStatus ProgressSnapshotStatus @default(DRAFT)
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, snapshotDate])
+}
+
+model WeeklyReflection {
+  id String @id @default(cuid())
+  userId String
+  weekStartDate DateTime
+  difficultyRating String?
+  frictionPoints Json?
+  selectedFocusGoal String?
+  notes String?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, weekStartDate])
+}

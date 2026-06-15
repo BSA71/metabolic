@@ -1,0 +1,33 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { config } from "dotenv";
+import { z } from "zod";
+
+for (const envPath of [path.resolve(process.cwd(), ".env"), path.resolve(process.cwd(), "server/.env")]) {
+  if (existsSync(envPath)) {
+    config({ path: envPath, override: true });
+    break;
+  }
+}
+
+const envSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  PORT: z.coerce.number().default(8080),
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  FIREBASE_PROJECT_ID: z.string().default("metabolic"),
+  FIREBASE_CLIENT_EMAIL: z.string().optional().default(""),
+  FIREBASE_PRIVATE_KEY: z.string().optional().default(""),
+  AI_PROVIDER: z.enum(["mock", "openai", "gemini"]).default("mock"),
+  OPENAI_API_KEY: z.string().optional().default(""),
+  GEMINI_API_KEY: z.string().optional().default(""),
+  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+  TWILIO_ACCOUNT_SID: z.string().optional().default(""),
+  TWILIO_AUTH_TOKEN: z.string().optional().default(""),
+  TWILIO_PHONE_NUMBER: z.string().optional().default(""),
+  SENDGRID_API_KEY: z.string().optional().default(""),
+  SENDGRID_FROM_EMAIL: z.string().email().optional().or(z.literal("")).default(""),
+  SENDGRID_FROM_NAME: z.string().optional().default("Master Metabolic"),
+  CLIENT_URL: z.string().url().default("http://localhost:5173")
+});
+
+export const env = envSchema.parse(process.env);

@@ -1,0 +1,143 @@
+import { FoodSource, Visibility, MealItemType } from '@prisma/client';
+import { prisma } from '../db/prisma.js';
+import { getAiProvider, type FoodEstimate } from './aiService.js';
+import { addMealItem } from './nutritionService.js';
+import { n } from '../utils/numbers.js';
+
+export type FoodLookupItem =
+  | { source: 'existing'; line: string; food: Awaited<ReturnType<typeof findExistingFood>> & object }
+  | { source: 'ai'; line: string; lookup: { id: string }; estimate: FoodEstimate };
+
+export type FoodLookupResult = {
+  source: 'existing' | 'ai' | 'mixed';
+  items: FoodLookupItem[];
+};
+
+function splitFoodLines(input: string) {
+  return input
+    .split(/\n|,|;|•/)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 2);
+}
+
+async function findExistingFood(userId: string, query: string) {
+  return prisma.food.findFirst({
+    where: {
+      OR: [
+        { name: { contains: query, mode: 'insensitive' } },
+        { aliases: { some: { alias: { contains: query, mode: 'insensitive' } } } }
+      ],
+      AND: [{ OR: [{ visibility: 'GLOBAL' }, { ownerUserId: userId }] }]
+    }
+  });
+}
+
+export async function lookupFood(userId: string, inputText: string): Promise<FoodLookupResult> {
+  const lines = splitFoodLines(inputText);
+  const items: FoodLookupItem[] = [];
+  const needsAi: string[] = [];
+
+  for (const line of lines.length ? lines : [inputText.trim()]) {
+    const food = await findExistingFood(userId, line);
+    if (food) {
+      items.push({ source: 'existing', line, food });
+    } else {
+      needsAi.push(line);
+    }
+  }
+
+  if (needsAi.length > 0) {
+    const estimates = await getAiProvider().lookupFood(needsAi.join('\n'));
+    for (let index = 0; index < needsAi.length; index++) {
+      const line = needsAi[index]!;
+      const estimate = estimates[index] ?? estimates[estimates.length - 1]!;
+      const lookup = await prisma.aiFoodLookup.create({ data: { userId, inputText: line, ...estimate } });
+      items.push({ source: 'ai', line, lookup, estimate });
+    }
+  }
+
+  const hasExisting = items.some((item) => item.source === 'existing');
+  const hasAi = items.some((item) => item.source === 'ai');
+  const source = hasExisting && hasAi ? 'mixed' : hasExisting ? 'existing' : 'ai';
+
+  return { source, items };
+}
+
+export async function lookupFoodFromImage(
+  userId: string,
+  image: { data: string; mimeType: string },
+  inputText = ''
+): Promise<FoodLookupResult> {
+  const estimates = await getAiProvider().lookupFoodFromImage(image, inputText);
+  const items: FoodLookupItem[] = [];
+
+  for (const estimate of estimates) {
+    const lookup = await prisma.aiFoodLookup.create({
+      data: {
+        userId,
+        inputText: inputText.trim() || 'uploaded meal photo',
+        ...estimate
+      }
+    });
+    items.push({ source: 'ai', line: estimate.normalizedFoodName, lookup, estimate });
+  }
+
+  return { source: 'ai', items };
+}
+
+export async function acceptFoodLookup(userId: string, lookupId: string, mealId?: string, type: MealItemType = MealItemType.ACTUAL) {
+  const food = await prisma.$transaction(async (tx) => {
+    const lookup = await tx.aiFoodLookup.findFirstOrThrow({ where: { id: lookupId, userId } });
+    if (lookup.accepted && lookup.foodId) {
+      return tx.food.findUniqueOrThrow({ where: { id: lookup.foodId } });
+    }
+    const created = await tx.food.create({
+      data: {
+        name: lookup.normalizedFoodName,
+        servingSize: 1,
+        servingUnit: 'serving',
+        calories: lookup.calories,
+        protein: lookup.protein,
+        carbs: lookup.carbs,
+        fat: lookup.fat,
+        source: FoodSource.AI,
+        visibility: Visibility.USER,
+        ownerUserId: userId,
+        createdById: userId,
+        aiGenerated: true,
+        verified: false
+      }
+    });
+    await tx.aiFoodLookup.update({ where: { id: lookupId }, data: { accepted: true, foodId: created.id } });
+    return created;
+  });
+
+  if (mealId) {
+    await addMealItem(userId, mealId, {
+      foodId: food.id,
+      type,
+      nameSnapshot: food.name,
+      quantity: 1,
+      unit: food.servingUnit,
+      calories: n(food.calories),
+      protein: n(food.protein),
+      carbs: n(food.carbs),
+      fat: n(food.fat)
+    });
+  }
+
+  return food;
+}
+
+export async function acceptFoodLookups(
+  userId: string,
+  lookupIds: string[],
+  mealId?: string,
+  type: MealItemType = MealItemType.ACTUAL
+) {
+  const foods = [];
+  for (const lookupId of lookupIds) {
+    foods.push(await acceptFoodLookup(userId, lookupId, mealId, type));
+  }
+  return foods;
+}

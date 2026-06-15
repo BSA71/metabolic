@@ -1,0 +1,218 @@
+import { MealItemType, MealStatus, Prisma, ProgramStatus, type Program, type ProgramMetric } from '@prisma/client';
+import { prisma } from '../db/prisma.js';
+import { parseDateParam, startOfUtcDay, toDateKey } from '../utils/dates.js';
+import { applyDefaultTemplateToNewLogOutsideTx } from './nutritionTemplateApply.js';
+import { applyDefaultTemplateToNewDayOutsideTx } from './exerciseTemplateApply.js';
+
+const DEFAULT_MEALS: [number, string, string][] = [
+  [1, 'Breakfast', '07:30'],
+  [2, 'Snack', '10:30'],
+  [3, 'Lunch', '12:30'],
+  [4, 'Snack', '15:30'],
+  [5, 'Dinner', '18:30']
+];
+
+function metricValue(metrics: ProgramMetric[], type: string) {
+  return metrics.find((metric) => metric.metricType === type)?.currentValue;
+}
+
+async function copyMealsFromLog(sourceLogId: string, targetLogId: string, userId: string) {
+  const sourceMeals = await prisma.meal.findMany({
+    where: { dailyLogId: sourceLogId },
+    include: { items: true },
+    orderBy: { mealNumber: 'asc' }
+  });
+
+  for (const meal of sourceMeals) {
+    const plannedItems = meal.items.filter((item) => item.type === MealItemType.PLANNED);
+    if (!plannedItems.length && meal.status === MealStatus.PLANNED) continue;
+
+    await prisma.meal.create({
+      data: {
+        dailyLogId: targetLogId,
+        userId,
+        mealNumber: meal.mealNumber,
+        name: meal.name,
+        plannedTime: meal.plannedTime,
+        status: MealStatus.PLANNED,
+        plannedCalories: meal.plannedCalories,
+        plannedProtein: meal.plannedProtein,
+        plannedCarbs: meal.plannedCarbs,
+        plannedFat: meal.plannedFat,
+        items: plannedItems.length
+          ? {
+              create: plannedItems.map((item) => ({
+                foodId: item.foodId,
+                type: MealItemType.PLANNED,
+                nameSnapshot: item.nameSnapshot,
+                quantity: item.quantity,
+                unit: item.unit,
+                calories: item.calories,
+                protein: item.protein,
+                carbs: item.carbs,
+                fat: item.fat
+              }))
+            }
+          : undefined
+      }
+    });
+  }
+}
+
+async function createDefaultMeals(dailyLogId: string, userId: string) {
+  for (const [mealNumber, name, plannedTime] of DEFAULT_MEALS) {
+    await prisma.meal.create({
+      data: { dailyLogId, userId, mealNumber, name, plannedTime, status: MealStatus.PLANNED }
+    });
+  }
+}
+
+async function copyExercisesForDate(programId: string, userId: string, targetDate: Date) {
+  const latestExerciseDay = await prisma.scheduledExercise.findFirst({
+    where: { userId, programId },
+    orderBy: { scheduledDate: 'desc' }
+  });
+
+  if (!latestExerciseDay) return;
+
+  const templateExercises = await prisma.scheduledExercise.findMany({
+    where: { userId, programId, scheduledDate: latestExerciseDay.scheduledDate },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+  });
+
+  if (!templateExercises.length) return;
+
+  await prisma.scheduledExercise.createMany({
+    data: templateExercises.map((exercise) => ({
+      programId,
+      userId,
+      exerciseId: exercise.exerciseId,
+      scheduledDate: targetDate,
+      sets: exercise.sets,
+      reps: exercise.reps,
+      durationMinutes: exercise.durationMinutes,
+      distance: exercise.distance,
+      weight: exercise.weight,
+      status: 'PLANNED',
+      sortOrder: exercise.sortOrder
+    }))
+  });
+}
+
+async function seedExercisesForDate(
+  program: { id: string; defaultExerciseTemplateId: string | null },
+  userId: string,
+  targetDate: Date
+) {
+  const existing = await prisma.scheduledExercise.count({
+    where: { userId, programId: program.id, scheduledDate: targetDate }
+  });
+  if (existing) return;
+
+  if (program.defaultExerciseTemplateId) {
+    await applyDefaultTemplateToNewDayOutsideTx(program, userId, targetDate);
+    return;
+  }
+
+  await copyExercisesForDate(program.id, userId, targetDate);
+}
+
+export async function ensureDailyLog(userId: string, program: Program & { metrics: ProgramMetric[] }, targetDate: Date) {
+  const day = startOfUtcDay(targetDate);
+  const existing = await prisma.dailyLog.findUnique({
+    where: { userId_date: { userId, date: day } },
+    include: { meals: true }
+  });
+  if (existing) {
+    if (existing.meals.length === 0) {
+      const priorLog = await prisma.dailyLog.findFirst({
+        where: { userId, programId: program.id, date: { lt: day } },
+        orderBy: { date: 'desc' },
+        include: { meals: { include: { items: true }, orderBy: { mealNumber: 'asc' } } }
+      });
+      if (priorLog?.meals.length) {
+        await copyMealsFromLog(priorLog.id, existing.id, userId);
+      } else if (program.defaultNutritionTemplateId) {
+        await applyDefaultTemplateToNewLogOutsideTx(program, existing.id, userId);
+      } else {
+        await createDefaultMeals(existing.id, userId);
+      }
+    }
+    return existing;
+  }
+
+  const priorLog = await prisma.dailyLog.findFirst({
+    where: { userId, programId: program.id, date: { lt: day } },
+    orderBy: { date: 'desc' },
+    include: { meals: { include: { items: true }, orderBy: { mealNumber: 'asc' } } }
+  });
+
+  const fallbackLog = priorLog
+    ?? (await prisma.dailyLog.findFirst({
+      where: { userId, programId: program.id },
+      orderBy: { date: 'desc' },
+      include: { meals: { include: { items: true }, orderBy: { mealNumber: 'asc' } } }
+    }));
+
+  let dailyLog;
+  let created = false;
+
+  try {
+    dailyLog = await prisma.dailyLog.create({
+      data: {
+        programId: program.id,
+        userId,
+        date: day,
+        weight: fallbackLog?.weight ?? metricValue(program.metrics, 'WEIGHT'),
+        bodyFat: fallbackLog?.bodyFat ?? metricValue(program.metrics, 'BODY_FAT'),
+        waist: fallbackLog?.waist,
+        calorieTarget: fallbackLog?.calorieTarget ?? metricValue(program.metrics, 'CALORIES') ?? 2200,
+        proteinTarget: fallbackLog?.proteinTarget ?? metricValue(program.metrics, 'PROTEIN') ?? 190,
+        carbTarget: fallbackLog?.carbTarget ?? 190,
+        fatTarget: fallbackLog?.fatTarget ?? 70,
+        mealsPlanned: fallbackLog?.meals.length ?? DEFAULT_MEALS.length,
+        exercisesPlanned: fallbackLog?.exercisesPlanned ?? 4
+      }
+    });
+    created = true;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      dailyLog = await prisma.dailyLog.findUnique({ where: { userId_date: { userId, date: day } } });
+      if (!dailyLog) throw error;
+    } else {
+      throw error;
+    }
+  }
+
+  if (!created) return dailyLog;
+
+  if (fallbackLog?.meals.length) {
+    await copyMealsFromLog(fallbackLog.id, dailyLog.id, userId);
+  } else if (program.defaultNutritionTemplateId) {
+    await applyDefaultTemplateToNewLogOutsideTx(program, dailyLog.id, userId);
+  } else {
+    await createDefaultMeals(dailyLog.id, userId);
+  }
+
+  await seedExercisesForDate(program, userId, day);
+
+  return dailyLog;
+}
+
+export async function ensureTodayDailyLog(userId: string, program: Program & { metrics: ProgramMetric[] }) {
+  return ensureDailyLog(userId, program, startOfUtcDay());
+}
+
+export async function ensureDailyLogByUserId(userId: string, date: string) {
+  const program = await prisma.program.findFirst({
+    where: { userId, status: ProgramStatus.ACTIVE },
+    include: { metrics: true }
+  });
+  if (!program) return null;
+  const day = parseDateParam(date);
+  return ensureDailyLog(userId, program, day);
+}
+
+export async function ensureTodayDailyLogByUserId(userId: string) {
+  return ensureDailyLogByUserId(userId, toDateKey(startOfUtcDay()));
+}
